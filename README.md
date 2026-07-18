@@ -1,9 +1,8 @@
 # Makoquiz — 即時搶答互動簡報平台
 
-參考 [AhaSlides](https://presenter.ahaslides.com/) 架構做的即時互動問答系統。
 主持人在大螢幕出題，參與者用手機掃 QR Code 加入作答，答對越快分數越高，並可即時提問。
 
-**Nuxt 4 + Nitro + Socket.IO**，介面全部使用 SVG 圖示（沒有 emoji）。
+**Nuxt 4 + Nitro + Socket.IO**。
 
 📖 **完整說明文件：[maxx541.github.io/mako-quiz](https://maxx541.github.io/mako-quiz/)**
 
