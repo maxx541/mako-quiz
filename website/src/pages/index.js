@@ -36,16 +36,23 @@ function HomepageHeader() {
   );
 }
 
+// 桌機／主持端畫面（統一 16:10）
 const SHOTS = [
   ['03-host-lobby.png', '大廳等待', '房號 + QR，掃描即加入'],
-  ['05-player-answering.png', '手機作答', '不用註冊，填暱稱就進來'],
   ['06-reveal.png', '公布答案', '即時長條圖動畫'],
   ['07-leaderboard.png', '排行榜', '答對越快分數越高'],
   ['10-podium.png', '頒獎台', '金銀銅逐名揭曉'],
   ['09-reactions.png', '表情符號', '匿名浮出、自動淡出'],
   ['08-word-cloud.png', '文字雲', '開放問題即時彙整'],
-  ['11-categorize.png', '分類題', '手指拖曳，觸控也能玩'],
   ['12-gallery.png', '題庫市集', '下載、上架、共用題庫'],
+  ['01-admin-list.png', '管理後台', '簡報列表與匯入匯出'],
+  ['02-editor.png', '題目編輯器', '左投影片／中出題／右設定'],
+];
+
+// 參與者手機畫面（直式）
+const PHONE_SHOTS = [
+  ['05-player-answering.png', '手機作答', '不用註冊，填暱稱就進來'],
+  ['11-categorize.png', '分類題', '手指拖曳，觸控也能玩'],
 ];
 
 function Showcase() {
@@ -64,6 +71,24 @@ function Showcase() {
         <div className={styles.grid}>
           {SHOTS.map(([file, title, desc]) => (
             <div className={styles.card} key={file}>
+              <img
+                src={useBaseUrl(`/img/screenshots/${file}`)}
+                alt={title}
+                loading="lazy"
+              />
+              <p>
+                <b>{title}</b>：{desc}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        <Heading as="h3" className={styles.phoneTitle}>
+          手機端（參與者畫面）
+        </Heading>
+        <div className={styles.phoneGrid}>
+          {PHONE_SHOTS.map(([file, title, desc]) => (
+            <div className={styles.phoneCard} key={file}>
               <img
                 src={useBaseUrl(`/img/screenshots/${file}`)}
                 alt={title}

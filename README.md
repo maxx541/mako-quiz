@@ -19,23 +19,27 @@
 <table>
   <tr>
     <td width="33%"><img src="docs/screenshots/03-host-lobby.png" alt="主持人大廳與 QR Code"><br><sub><b>大廳等待</b>：房號 + QR，掃描即加入</sub></td>
-    <td width="33%"><img src="docs/screenshots/05-player-answering.png" alt="參與者手機作答"><br><sub><b>手機作答</b>：不用註冊，填暱稱就進來</sub></td>
     <td width="33%"><img src="docs/screenshots/06-reveal.png" alt="公布答案長條圖"><br><sub><b>公布答案</b>：即時長條圖動畫</sub></td>
+    <td width="33%"><img src="docs/screenshots/07-leaderboard.png" alt="排行榜"><br><sub><b>排行榜</b>：答對越快分數越高</sub></td>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/07-leaderboard.png" alt="排行榜"><br><sub><b>排行榜</b>：答對越快分數越高</sub></td>
     <td><img src="docs/screenshots/10-podium.png" alt="最終頒獎台"><br><sub><b>頒獎台</b>：金銀銅逐名揭曉</sub></td>
     <td><img src="docs/screenshots/09-reactions.png" alt="匿名表情符號"><br><sub><b>表情符號</b>：匿名浮出、自動淡出</sub></td>
-  </tr>
-  <tr>
     <td><img src="docs/screenshots/08-word-cloud.png" alt="即時文字雲"><br><sub><b>文字雲</b>：開放問題即時彙整</sub></td>
-    <td><img src="docs/screenshots/11-categorize.png" alt="分類拖曳題"><br><sub><b>分類題</b>：手指拖曳，觸控也能玩</sub></td>
-    <td><img src="docs/screenshots/12-gallery.png" alt="題庫市集"><br><sub><b>題庫市集</b>：下載、上架、共用題庫</sub></td>
   </tr>
   <tr>
+    <td><img src="docs/screenshots/12-gallery.png" alt="題庫市集"><br><sub><b>題庫市集</b>：下載、上架、共用題庫</sub></td>
     <td><img src="docs/screenshots/01-admin-list.png" alt="管理後台簡報列表"><br><sub><b>管理後台</b>：簡報列表與匯入匯出</sub></td>
     <td><img src="docs/screenshots/02-editor.png" alt="題目編輯器"><br><sub><b>編輯器</b>：左投影片／中出題／右設定</sub></td>
-    <td></td>
+  </tr>
+</table>
+
+**手機端（參與者用手機加入作答）**
+
+<table>
+  <tr>
+    <td width="50%" align="center"><img src="docs/screenshots/05-player-answering.png" alt="參與者手機作答" width="260"><br><sub><b>手機作答</b>：不用註冊，填暱稱就進來</sub></td>
+    <td width="50%" align="center"><img src="docs/screenshots/11-categorize.png" alt="手機分類拖曳" width="260"><br><sub><b>分類題</b>：手指拖曳，觸控也能玩</sub></td>
   </tr>
 </table>
 

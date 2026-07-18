@@ -115,3 +115,38 @@
   text-align: center;
   margin-bottom: 2.5rem;
 }
+
+/* 手機端展示（直式截圖） */
+.phoneTitle {
+  text-align: center;
+  margin: 3.5rem 0 1.75rem;
+}
+
+.phoneGrid {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.phoneCard {
+  width: 240px;
+  text-align: center;
+}
+
+.phoneCard img {
+  display: block;
+  width: 100%;
+  border-radius: 22px;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+}
+
+.phoneCard p {
+  margin: 0.75rem 0 0;
+  font-size: 0.9rem;
+}
+
+.phoneCard p b {
+  color: var(--ifm-color-primary);
+}
