@@ -1,0 +1,383 @@
+/* 題庫市集。版面刻意跟後台的簡報列表長得像，不要讓人覺得是另一個程式。 */
+
+/*
+ * appbar / brand 要在這裡再寫一次。
+ * admin.vue 那份是 <style scoped>，只作用在它自己的元件上 ——
+ * 這一頁沿用同樣的 class 名稱，但吃不到那些樣式（頂列會變成一排裸的連結）。
+ */
+.appbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 20px;
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 900;
+  font-size: 16px;
+  letter-spacing: -0.02em;
+  text-decoration: none;
+  color: var(--ink);
+}
+
+.brand-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 26px 20px 60px;
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.page-head h1 {
+  font-size: 25px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
+.page-head p {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.src {
+  opacity: 0.75;
+}
+
+/* ---------------- 篩選列 ---------------- */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-bottom: 18px;
+}
+
+.search {
+  flex: 1;
+  min-width: 220px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--card);
+  color: var(--muted);
+}
+
+.search input {
+  flex: 1;
+  border: 0;
+  background: none;
+  outline: none;
+  padding: 10px 0;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.select.sm {
+  width: auto;
+  padding: 9px 10px;
+  font-size: 13px;
+}
+
+.seg {
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+
+.seg button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 9px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.seg button.on {
+  background: var(--brand);
+  color: #fff;
+}
+
+/* ---------------- 卡片 ---------------- */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 封面 —— 外部網址的圖大小不受控，一律裁切填滿，不要讓卡片高度跳來跳去 */
+.cover {
+  height: 132px;
+  background: #0b1220;
+  flex: none;
+}
+
+.cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.card-body {
+  padding: 15px 15px 10px;
+  flex: 1;
+}
+
+.card h3 {
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.desc {
+  color: var(--muted);
+  font-size: 12.5px;
+  margin-top: 5px;
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.tag {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 15px 10px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.meta span {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.acts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.empty-box {
+  border: 1px dashed var(--line);
+  border-radius: var(--r-lg);
+  padding: 54px 20px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.empty-box h3 {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--ink);
+  margin: 12px 0 4px;
+}
+
+/* ---------------- 彈窗 ---------------- */
+
+.gv-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(15, 23, 42, 0.6);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.sheet {
+  background: var(--card, #fff);
+  border-radius: var(--r-xl);
+  box-shadow: var(--sh-3);
+  padding: 22px;
+  width: 100%;
+  max-width: 460px;
+  max-height: 86vh;
+  overflow-y: auto;
+}
+
+.sheet.wide {
+  max-width: 760px;
+}
+
+.sheet h2 {
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.note {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+  margin-top: 5px;
+}
+
+.lbl {
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--muted);
+  margin: 14px 0 5px;
+}
+
+.pick-list,
+.admin-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.pick:hover:not(:disabled) {
+  border-color: var(--brand);
+}
+
+.pick:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.arow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+
+/*
+ * 被隱藏的東西要一眼看得出來，不然管理員會以為它還在架上。
+ *
+ * class 千萬不能叫 .hidden —— main.css 有個全域的 .hidden{display:none!important}，
+ * 那會讓被隱藏的題庫在後台「真的消失」，管理員就再也找不到它、放不回去了。
+ * （這個坑在 RevealPlanner 的遮罩也踩過一次。）
+ */
+.arow.is-hidden {
+  opacity: 0.62;
+  border-style: dashed;
+}
+
+.tx {
+  flex: 1;
+  min-width: 0;
+}
+
+.tt {
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ty {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.reasons {
+  word-break: break-word;
+}
+
+.chip {
+  font-size: 10px;
+  font-weight: 800;
+  border-radius: 999px;
+  padding: 1px 7px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.chip.warn {
+  border-color: #f59e0b;
+  color: #b45309;
+}
+
+.acts-end {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}

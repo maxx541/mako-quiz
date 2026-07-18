@@ -1,0 +1,17 @@
+# 預設：文字檔統一以 LF 存進版控，簽出時交給 git 依平台處理，避免跨平台換行雜訊。
+* text=auto eol=lf
+
+# Windows 專用的啟動腳本維持 CRLF（在 cmd / 檔案總管雙擊執行最保險）。
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# 二進位檔不要做換行轉換。
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.ico  binary
+*.mp3  binary
+*.wav  binary
+*.ogg  binary

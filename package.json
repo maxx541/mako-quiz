@@ -1,0 +1,33 @@
+{
+  "name": "makoquiz",
+  "version": "2.0.0",
+  "description": "即時搶答互動簡報平台（Nuxt 4 + Socket.IO）",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "start": "node .output/server/index.mjs",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "test": "node tests/run.mjs e2e",
+    "test:browser": "node tests/run.mjs browser",
+    "test:all": "node tests/run.mjs all"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "dependencies": {
+    "engine.io": "^6.6.4",
+    "fflate": "^0.8.3",
+    "nuxt": "^4.4.8",
+    "qrcode": "^1.5.4",
+    "socket.io": "^4.8.1",
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.0"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^24.0.0",
+    "socket.io-client": "^4.8.1"
+  }
+}

@@ -1,0 +1,35 @@
+# ── 相依套件 ──
+node_modules/
+
+# ── 建置產物 ──
+.output/
+.nuxt/
+.nitro/
+dist/
+
+# ── 本機資料（簡報 JSON、上傳的圖片與音檔、按鈕音效、本機題庫市集）──
+# 第一次啟動會自動建立一份示範簡報，所以不需要把這些同步上 GitHub。
+data/
+
+# ── 環境變數（含密鑰，絕對不要上傳）──
+.env
+.env.*
+!.env.example
+
+# ── cloudflared 臨時通道（約 50 MB 執行檔，start.ps1 會在第一次啟動時自動下載）──
+cloudflared.exe
+cloudflared*.exe
+
+# ── 記錄檔 ──
+*.log
+
+# ── 測試產生的截圖與本機暫存素材 ──
+# 注意：只忽略根目錄這幾個，docs/screenshots/ 的說明用圖仍會進版控。
+/screenshots/
+/Screenshot/
+/表情包/
+
+# ── 作業系統雜物 ──
+.DS_Store
+Thumbs.db
+desktop.ini

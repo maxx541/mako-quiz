@@ -1,0 +1,2124 @@
+/* ============================================================
+   主持人 / 大螢幕播放介面
+   ============================================================ */
+
+.stage {
+  position: relative;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--t-bg);
+  color: var(--t-ink);
+  display: flex;
+  flex-direction: column;
+}
+
+.stage > .top,
+.stage > .canvas,
+.stage > .controls,
+.stage > .stage-empty {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------------- 頂列 ---------------- */
+
+.top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 22px;
+  border-bottom: 1px solid var(--t-line);
+  background: rgba(0, 0, 0, 0.18);
+  flex: none;
+}
+
+.top h1 {
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 30vw;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--t-card);
+  border: 1px solid var(--t-line);
+  border-radius: 999px;
+  padding: 5px 13px;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pill b {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+}
+
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.6);
+  animation: ping 1.8s infinite;
+}
+
+@keyframes ping {
+  70% {
+    box-shadow: 0 0 0 7px rgba(74, 222, 128, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(74, 222, 128, 0);
+  }
+}
+
+.ghost-btn {
+  border: 1px solid var(--t-line);
+  background: var(--t-card);
+  color: inherit;
+  border-radius: var(--r);
+  padding: 7px 13px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ghost-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.ghost-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.ghost-btn.on {
+  background: rgba(99, 102, 241, 0.4);
+  border-color: #818cf8;
+}
+
+/* ---------------- 舞台 ---------------- */
+
+/*
+ * 大螢幕不該用捲的 —— 台下的人看不到捲軸底下的東西。
+ * 所以這裡不給捲，改成讓內容自己縮：圖片用 vh、字用 clamp、
+ * 需要時內部區塊自己捲（例如提問卡片），外層一律塞得下。
+ */
+.canvas {
+  flex: 1;
+  overflow: hidden;
+  padding: 20px 40px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  animation: fade-up 0.32s ease-out;
+}
+
+/* 大廳 */
+.lobby {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 46px;
+  align-items: center;
+}
+
+/* 有封面就多開一欄給它：加入資訊 | 封面 | QR */
+.lobby.has-cover {
+  grid-template-columns: 1fr minmax(0, 1fr) auto;
+  gap: 32px;
+}
+
+.lobby-cover {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+}
+
+/*
+ * 封面一律 contain：這張圖是作者挑來代表整份簡報的，裁掉重點就失去意義。
+ * 高度綁 vh 而不是給固定值 —— 投影機解析度差很多。
+ */
+.lobby-cover img {
+  max-width: 100%;
+  max-height: 56vh;
+  object-fit: contain;
+  border-radius: var(--r);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+}
+
+.lobby-title {
+  font-size: clamp(30px, 3.6vw, 52px);
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  margin-bottom: 26px;
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.jstep {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.jstep .n {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--t-card);
+  border: 1px solid var(--t-line);
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 15px;
+}
+
+.jstep .t {
+  font-size: 16px;
+  color: var(--t-muted);
+  font-weight: 600;
+}
+
+.jstep .v {
+  font-size: clamp(24px, 2.6vw, 38px);
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+.jstep .v.code {
+  letter-spacing: 0.16em;
+  color: #fde047;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 網址那行做成可以點的複製鈕：字級沿用 .v，只是加上滑鼠回饋與複製圖示 */
+.jstep .v-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 0;
+  margin: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  line-height: 1.1;
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.jstep .v-copy > span {
+  overflow-wrap: anywhere;
+}
+
+.jstep .v-copy svg {
+  flex: none;
+  opacity: 0.45;
+  transition: opacity 0.15s;
+}
+
+.jstep .v-copy:hover {
+  color: #fde047;
+}
+
+.jstep .v-copy:hover svg {
+  opacity: 1;
+}
+
+.jstep .v-copy:active {
+  transform: scale(0.98);
+}
+
+.qr-card {
+  background: #fff;
+  border-radius: var(--r-xl);
+  padding: 16px;
+  box-shadow: var(--sh-3);
+  text-align: center;
+}
+
+.qr-card img {
+  display: block;
+  width: clamp(190px, 19vw, 280px);
+  height: auto;
+  border-radius: var(--r);
+}
+
+.qr-card .cap {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+  margin-top: 9px;
+  letter-spacing: 0.04em;
+}
+
+.lobby-music {
+  margin-top: 28px;
+}
+
+.roster {
+  margin-top: 34px;
+}
+
+.roster-head {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--t-muted);
+  letter-spacing: 0.06em;
+  margin-bottom: 12px;
+}
+
+.roster-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 20vh;
+  overflow-y: auto;
+}
+
+.who-chip {
+  background: var(--t-card);
+  border: 1px solid var(--t-line);
+  border-radius: 999px;
+  padding: 6px 14px 6px 6px;
+  font-size: 14px;
+  font-weight: 700;
+  animation: pop-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* 沒設頭像的人不用左邊那塊留白 */
+.who-chip:not(:has(.who-avatar)) {
+  padding-left: 14px;
+}
+
+.who-chip button {
+  border: none;
+  background: none;
+  color: rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  padding: 0;
+  line-height: 0;
+}
+
+.who-chip button:hover {
+  color: #f87171;
+}
+
+/* 題目 */
+.q-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;
+  min-height: 0;
+}
+
+.q-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--t-muted);
+  letter-spacing: 0.05em;
+  margin-bottom: 14px;
+}
+
+.q-meta .tag {
+  background: var(--t-card);
+  border: 1px solid var(--t-line);
+  border-radius: 999px;
+  padding: 4px 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.q-meta .tag.locked {
+  background: rgba(245, 158, 11, 0.22);
+  border-color: rgba(251, 191, 36, 0.5);
+  color: #fde68a;
+}
+
+.q-title {
+  font-size: clamp(22px, 2.6vw, 42px);
+  font-weight: 900;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  /* 題目再長也不能把選項擠出畫面 */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  flex: none;
+}
+
+/*
+ * 圖片用 flex 分配剩下的空間，不要寫死高度 ——
+ * 寫死的話「標題 + 圖 + 播放器 + 選項」加起來就會超出一個螢幕。
+ */
+.q-img {
+  display: block;
+  max-width: 100%;
+  min-height: 0;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: var(--r-lg);
+  margin: 0 auto;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.q-img-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 0;
+}
+
+/* ---------------- 猜圖題 ---------------- */
+
+.reveal-stage {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 170px;
+  grid-template-rows: 1fr auto;
+  gap: 18px 24px;
+  margin-top: 16px;
+  min-height: 0;
+}
+
+.reveal-box {
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* RevealImage 要用 cqw/cqh 把自己縮成圖片的形狀，這裡得先當個尺寸容器 */
+  container-type: size;
+}
+
+.reveal-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+}
+
+.reveal-opts {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.p-opt.compact {
+  min-height: 58px;
+  padding: 12px 16px;
+  font-size: clamp(14px, 1.2vw, 19px);
+  gap: 10px;
+}
+
+.stage-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.stage-dots i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--t-line);
+  transition: background 0.3s;
+}
+
+.stage-dots i.on {
+  background: var(--t-accent, #818cf8);
+}
+
+.q-meta .tag.stage-tag b {
+  color: #fde047;
+  margin-left: 2px;
+}
+
+.ring.small {
+  width: 92px;
+  height: 92px;
+}
+
+.ring.small .val {
+  font-size: 26px;
+}
+
+/* ---------------- 音樂題播放器 ---------------- */
+
+.player {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--t-card);
+  border: 1px solid var(--t-line);
+  border-radius: var(--r-xl);
+  padding: 12px 18px;
+  flex: none;
+}
+
+.play-btn {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: none;
+  background: var(--t-accent, #818cf8);
+  color: #0b1220;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  flex: none;
+  transition: transform 0.12s, opacity 0.15s;
+}
+
+.play-btn:hover:not(:disabled) {
+  transform: scale(1.05);
+}
+
+.play-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.player-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.wave {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 40px;
+}
+
+.wave i {
+  flex: 1;
+  height: 12%;
+  background: var(--t-accent, #818cf8);
+  border-radius: 2px;
+  opacity: 0.35;
+}
+
+.wave.on i {
+  animation: bounce-bar 0.9s ease-in-out infinite;
+  opacity: 1;
+}
+
+@keyframes bounce-bar {
+  0%,
+  100% {
+    height: 12%;
+  }
+  50% {
+    height: 100%;
+  }
+}
+
+.player-cap {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--t-muted);
+  margin-top: 6px;
+}
+
+/* ---------------- 數字題 ---------------- */
+
+.num-answer {
+  text-align: center;
+  padding: 14px 0 6px;
+}
+
+.num-answer .lbl {
+  display: block;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--t-muted);
+  letter-spacing: 0.06em;
+}
+
+.num-answer b {
+  font-size: clamp(38px, 4.5vw, 68px);
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  color: #86efac;
+}
+
+.num-stats {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.ns {
+  flex: 1;
+  background: var(--t-card);
+  border: 1px solid var(--t-line);
+  border-radius: var(--r);
+  padding: 12px 8px;
+  text-align: center;
+}
+
+.ns b {
+  display: block;
+  font-size: 22px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.ns span {
+  font-size: 11px;
+  color: var(--t-muted);
+  font-weight: 700;
+}
+
+/* ---------------- 評分題 ---------------- */
+
+.scale-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  height: 40vh;
+  padding: 10px 0;
+}
+
+.sbar {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  gap: 8px;
+}
+
+.sbar-track {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  background: var(--t-card);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+
+.sbar-track i {
+  width: 100%;
+  background: var(--t-accent, #818cf8);
+  border-radius: var(--r) var(--r) 0 0;
+  transition: height 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  min-height: 2px;
+}
+
+.sbar-n {
+  font-size: 16px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.sbar-v {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--t-muted);
+}
+
+.scale-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--t-muted);
+  margin-top: 10px;
+}
+
+.scale-foot b {
+  font-size: 20px;
+  color: var(--t-ink);
+}
+
+.q-body {
+  font-size: clamp(16px, 1.4vw, 22px);
+  color: var(--t-muted);
+  line-height: 1.7;
+  white-space: pre-wrap;
+  margin-top: 18px;
+}
+
+.q-body.center-text {
+  text-align: center;
+}
+
+.q-body.big {
+  font-size: 20px;
+}
+
+.full-span {
+  grid-column: 1 / -1;
+  text-align: center;
+}
+
+/*
+ * 這裡一定要 stretch 不能 center：align-items: center 會讓子元素的高度
+ * 等於它自己的內容高度、不受父層限制，圖片的 flex:1 就沒有可縮的空間，
+ * 「標題＋大圖＋播放器＋選項」加起來就會超出螢幕（音樂題最明顯）。
+ * 垂直置中改由子元素自己的 justify-content 處理。
+ */
+.q-main {
+  flex: 1;
+  display: flex;
+  gap: 26px;
+  align-items: stretch;
+  margin-top: 14px;
+  min-height: 0;
+}
+
+.q-side {
+  flex: none;
+  width: 170px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+}
+
+.q-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+}
+
+/*
+ * 配對題：列的內容很窄，撐滿整列的話右邊會空一大片（實測空了 1300px）。
+ * 改成左右分欄 —— 左邊放配對列，右邊放題目圖，剛好把空白補起來。
+ */
+.q-content.side-media {
+  flex-direction: row;
+  align-items: center;
+  gap: 28px;
+}
+
+.q-content.side-media .p-rows {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 題目圖吃右邊那一欄；order 讓它排到列的後面（DOM 上圖在前） */
+.q-content.side-media .q-img-wrap {
+  order: 2;
+  flex: 0 1 42%;
+  align-self: stretch;
+  padding: 0;
+}
+
+.q-content.side-media .q-img {
+  max-height: 100%;
+}
+
+/* ---------------- 答案解說 ---------------- */
+
+.q-main.with-explain .q-content {
+  flex: 1.4;
+}
+
+.explain-panel {
+  flex: 1;
+  min-width: 0;
+  max-width: 460px;
+  max-height: 100%;
+  overflow-y: auto;
+  background: var(--t-card);
+  border: 1px solid var(--t-line);
+  border-radius: var(--r-lg);
+  padding: 18px 20px;
+  animation: fade-up 0.45s ease-out 0.15s backwards;
+}
+
+.ep-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--t-muted);
+  letter-spacing: 0.06em;
+  margin-bottom: 12px;
+}
+
+.explain-panel img {
+  display: block;
+  width: 100%;
+  max-height: 34vh;
+  object-fit: contain;
+  border-radius: var(--r);
+  background: rgba(0, 0, 0, 0.3);
+  margin-bottom: 12px;
+}
+
+.explain-panel p {
+  font-size: clamp(14px, 1.15vw, 19px);
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 1100px) {
+  .explain-panel {
+    display: none;
+  }
+}
+
+/* 計時圈 */
+.ring {
+  position: relative;
+  width: 128px;
+  height: 128px;
+}
+
+.ring svg {
+  transform: rotate(-90deg);
+  width: 100%;
+  height: 100%;
+}
+
+.ring circle {
+  fill: none;
+  stroke-width: 9;
+  stroke-linecap: round;
+}
+
+.ring .bg {
+  stroke: var(--t-line);
+}
+
+.ring .fg {
+  stroke: #4ade80;
+  transition: stroke-dashoffset 0.2s linear, stroke 0.5s;
+}
+
+.ring.warn .fg {
+  stroke: #f59e0b;
+}
+
+.ring.danger .fg {
+  stroke: #ef4444;
+  animation: blink 0.6s infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.ring .val {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 34px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.locked-badge {
+  width: 128px;
+  height: 128px;
+  border-radius: 50%;
+  border: 3px dashed rgba(251, 191, 36, 0.6);
+  color: #fde68a;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 4px;
+  font-weight: 800;
+  font-size: 14px;
+}
+
+.count-box {
+  text-align: center;
+}
+
+.count-box b {
+  font-size: 42px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  display: block;
+}
+
+.count-box span {
+  font-size: 12px;
+  color: var(--t-muted);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+/* 海龜湯：這一輪的分母（/ 連線人數），比主數字小、淡一點 */
+.count-box b small {
+  font-size: 0.5em;
+  font-weight: 800;
+  color: var(--t-muted);
+}
+
+/* 海龜湯：提醒主持人「答滿就自動出下一條」 */
+.soup-wait {
+  max-width: 180px;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--t-muted);
+  font-weight: 700;
+}
+
+/* 選項 */
+.p-opts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  flex: none;
+}
+
+.p-opts.one {
+  grid-template-columns: 1fr;
+}
+
+.p-opt {
+  --oc: #6366f1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 20px;
+  border-radius: var(--r-lg);
+  background: var(--oc);
+  color: #fff;
+  font-size: clamp(15px, 1.4vw, 23px);
+  font-weight: 800;
+  min-height: 66px;
+  box-shadow: 0 5px 0 rgba(0, 0, 0, 0.24);
+  transition: opacity 0.35s, transform 0.35s, filter 0.35s, box-shadow 0.35s;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.p-opt.dim {
+  opacity: 0.3;
+  filter: grayscale(0.7);
+}
+
+.p-opt.win {
+  transform: scale(1.02);
+  box-shadow: 0 5px 0 rgba(0, 0, 0, 0.24), 0 0 0 4px #4ade80;
+}
+
+.p-opt .fill {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.22);
+  width: 0;
+  transition: width 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.p-opt > *:not(.fill) {
+  position: relative;
+  z-index: 1;
+}
+
+.p-opt-img {
+  width: 84px;
+  height: 60px;
+  object-fit: cover;
+  border-radius: var(--r-sm);
+  flex: none;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.p-opt .shape {
+  opacity: 0.85;
+}
+
+.p-opt .tx {
+  flex: 1;
+}
+
+.p-opt .cnt {
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex: none;
+}
+
+.p-opt .cnt .pc {
+  font-size: 0.72em;
+  opacity: 0.8;
+}
+
+.p-opt .mark {
+  flex: none;
+}
+
+/* 配對 / 順序 */
+.p-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* 圖片配對題排兩欄，圖才放得大（單欄 8 組的話每張只剩 40px） */
+.p-rows.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-content: start;
+}
+
+.p-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--t-card);
+  border: 1px solid var(--t-line);
+  border-radius: var(--r);
+  padding: 14px 18px;
+  font-size: clamp(15px, 1.3vw, 20px);
+  font-weight: 700;
+  position: relative;
+  overflow: hidden;
+}
+
+.p-row .bar {
+  position: absolute;
+  inset: 0;
+  background: rgba(74, 222, 128, 0.18);
+  width: 0;
+  transition: width 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.p-row > *:not(.bar) {
+  position: relative;
+  z-index: 1;
+}
+
+.p-row .n {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.p-row .arrow {
+  color: var(--t-muted);
+  flex: none;
+}
+
+/*
+ * 配對題的格子：可以是純文字、純圖片，或圖＋字。
+ * 圖一律 contain 不裁切 —— 看圖配對時被切掉的往往正是要辨認的那個細節。
+ */
+.p-row .cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.p-row .pimg {
+  height: var(--pih, 70px);
+  max-width: 30vw;
+  object-fit: contain;
+  border-radius: var(--r-sm);
+  background: rgba(0, 0, 0, 0.32);
+  flex: none;
+}
+
+.p-row .right {
+  color: #86efac;
+}
+
+.p-row .hit {
+  margin-left: auto;
+  font-size: 14px;
+  color: var(--t-muted);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+/* ---------------- 分類題 ---------------- */
+
+.cat-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+.cat-col {
+  --cc: #3b82f6;
+  border: 2px solid var(--t-line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  background: var(--t-card);
+}
+
+.cat-col-name {
+  background: var(--cc);
+  color: #fff;
+  font-size: clamp(14px, 1.2vw, 19px);
+  font-weight: 800;
+  padding: 10px 14px;
+  text-align: center;
+}
+
+.cat-col-body {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 120px;
+}
+
+.cat-col-hint {
+  margin: auto;
+  font-size: 34px;
+  font-weight: 900;
+  color: var(--t-muted);
+  opacity: 0.4;
+}
+
+.cat-chip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--t-line);
+  border-radius: var(--r);
+  padding: 10px 12px;
+  font-size: clamp(13px, 1.1vw, 17px);
+  font-weight: 700;
+  overflow: hidden;
+}
+
+/*
+ * 分類欄裡的縮圖：欄位本來就窄，圖給 52px 就好。
+ * 一樣 contain 不裁切；bar 是絕對定位的底色，圖要壓在它上面。
+ */
+.cat-chip .cimg {
+  height: 52px;
+  max-width: 84px;
+  object-fit: contain;
+  border-radius: var(--r-sm);
+  background: rgba(0, 0, 0, 0.32);
+  flex: none;
+  position: relative;
+  z-index: 1;
+}
+
+.cat-chip.has-img > span,
+.cat-chip.has-img > b {
+  position: relative;
+  z-index: 1;
+}
+
+.cat-chip .bar {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--cc) 32%, transparent);
+  width: 0;
+  transition: width 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cat-chip > *:not(.bar) {
+  position: relative;
+  z-index: 1;
+}
+
+.cat-chip span {
+  flex: 1;
+}
+
+.cat-chip b {
+  font-size: 0.82em;
+  color: var(--t-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 文字雲 */
+.p-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 22px;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  min-height: 200px;
+  align-content: center;
+}
+
+.p-cloud span {
+  font-weight: 900;
+  line-height: 1.1;
+  animation: pop-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.p-replies {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  align-content: start;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.p-reply {
+  background: var(--t-card);
+  border: 1px solid var(--t-line);
+  border-radius: var(--r);
+  padding: 14px 16px;
+  animation: pop-in 0.3s ease-out;
+}
+
+.p-reply .who {
+  font-size: 11px;
+  color: var(--t-muted);
+  font-weight: 800;
+  margin-bottom: 5px;
+}
+
+.p-reply .txt {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+/* 填空題答案 */
+.p-answers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.p-answer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--t-card);
+  border: 1px solid var(--t-line);
+  border-radius: var(--r);
+  padding: 12px 16px;
+  font-size: 17px;
+  font-weight: 700;
+  position: relative;
+  overflow: hidden;
+}
+
+.p-answer.ok {
+  border-color: rgba(74, 222, 128, 0.55);
+  color: #86efac;
+}
+
+.p-answer .bar {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.08);
+  width: 0;
+  transition: width 0.7s;
+}
+
+.p-answer.ok .bar {
+  background: rgba(74, 222, 128, 0.2);
+}
+
+.p-answer > *:not(.bar) {
+  position: relative;
+  z-index: 1;
+}
+
+.p-answer .n {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--t-muted);
+  flex: none;
+}
+
+/* 排行榜 */
+.board {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
+  gap: 10px;
+  min-height: 0;
+}
+
+.board h2 {
+  font-size: clamp(28px, 3vw, 44px);
+  font-weight: 900;
+  text-align: center;
+  margin-bottom: 22px;
+  letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+/* ---------------- 頒獎台（前三名） ---------------- */
+
+.podium-3 {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+/*
+ * 逐名揭曉：預設藏在下面，輪到它才升上來。
+ * 用 transition 而不是 animation，跳過動畫時才能直接切到定位。
+ */
+.pod {
+  flex: 1;
+  max-width: 230px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  opacity: 0;
+  transform: translateY(34px);
+  transition: opacity 0.4s ease-out, transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.pod.shown {
+  opacity: 1;
+  transform: none;
+}
+
+/* 第一名多跳一下，這是全場的重點 */
+.pod.p1.shown .pod-avatar {
+  animation: pod-pop 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.1s backwards;
+}
+
+@keyframes pod-pop {
+  0% {
+    transform: scale(0.5);
+  }
+  60% {
+    transform: scale(1.14);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.pod-who {
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+.pod-avatar {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 26px;
+  font-weight: 900;
+  color: #0f172a;
+  margin: 0 auto 8px;
+  overflow: hidden;
+}
+
+/* 有頭像就整顆蓋掉，金銀銅留在外圈當邊框 */
+.pod-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.brow-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: none;
+}
+
+.who-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin-right: 2px;
+}
+
+.pod-avatar.m1 {
+  background: var(--gold);
+  width: 72px;
+  height: 72px;
+  font-size: 30px;
+}
+
+.pod-avatar.m2 {
+  background: var(--silver);
+}
+
+.pod-avatar.m3 {
+  background: var(--bronze);
+  color: #fff;
+}
+
+.pod-name {
+  font-size: 17px;
+  font-weight: 800;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.p1 .pod-name {
+  font-size: 20px;
+}
+
+.pod-score {
+  font-size: 19px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+}
+
+.p1 .pod-score {
+  color: var(--gold);
+  font-size: 24px;
+}
+
+.p2 .pod-score {
+  color: var(--silver);
+}
+
+.p3 .pod-score {
+  color: var(--bronze);
+}
+
+.pod-block {
+  width: 100%;
+  border-radius: 12px 12px 0 0;
+  display: grid;
+  place-items: center;
+}
+
+.pod-block.m1 {
+  height: 150px;
+  background: var(--gold);
+}
+
+.pod-block.m2 {
+  height: 110px;
+  background: var(--silver);
+}
+
+.pod-block.m3 {
+  height: 82px;
+  background: var(--bronze);
+}
+
+.pod-rank {
+  font-size: 46px;
+  font-weight: 900;
+  color: rgba(15, 23, 42, 0.72);
+}
+
+.pod-block.m3 .pod-rank {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.pod.empty .pod-block {
+  background: var(--t-card);
+  border: 1px solid var(--t-line);
+}
+
+.pod.empty .pod-rank {
+  color: var(--t-muted);
+}
+
+.pod.empty .pod-avatar {
+  background: var(--t-card);
+  border: 1px solid var(--t-line);
+}
+
+.board-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ---------------- 海龜湯 ---------------- */
+
+.soup-stage {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 190px;
+  gap: 20px 26px;
+  margin-top: 18px;
+  min-height: 0;
+}
+
+.soup-hints {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  align-content: start;
+}
+
+.soup-hints li {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  background: var(--t-card);
+  border: 1px solid var(--t-line);
+  border-radius: var(--r-lg);
+  padding: 16px 20px;
+  font-size: clamp(17px, 1.6vw, 26px);
+  font-weight: 700;
+  line-height: 1.45;
+  animation: fade-up 0.4s ease-out;
+}
+
+.soup-hints li.latest {
+  border-color: var(--t-accent, #818cf8);
+  background: rgba(129, 140, 248, 0.14);
+}
+
+.soup-hints li.pending {
+  opacity: 0.28;
+  animation: none;
+}
+
+.soup-hints .hn {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  font-weight: 900;
+  margin-top: 2px;
+}
+
+.soup-hints .ht {
+  flex: 1;
+}
+
+.soup-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
+.soup-answer {
+  text-align: center;
+  margin-top: 8px;
+}
+
+.soup-answer .lbl {
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--t-muted);
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+
+.soup-answer b {
+  font-size: 20px;
+  font-weight: 900;
+  color: #86efac;
+}
+
+.soup-results {
+  grid-column: 1 / -1;
+}
+
+.brow {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  background: var(--t-card);
+  border: 1px solid var(--t-line);
+  border-radius: var(--r-lg);
+  padding: 15px 22px;
+  /* 前三名揭曉完才輪到這些（transitionDelay 由 template 逐列錯開） */
+  opacity: 0;
+  transform: translateX(26px);
+  transition: opacity 0.35s ease-out, transform 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.board-rows.shown .brow {
+  opacity: 1;
+  transform: none;
+}
+
+.brow .rank-badge {
+  width: 40px;
+  height: 40px;
+  font-size: 17px;
+}
+
+.brow .nm {
+  flex: 1;
+  font-size: clamp(17px, 1.5vw, 24px);
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.brow .sc {
+  font-size: clamp(18px, 1.6vw, 26px);
+  font-weight: 900;
+  color: #fde047;
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+.brow .streak {
+  font-size: 13px;
+  color: var(--t-muted);
+  font-weight: 800;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.brow.top1 {
+  background: rgba(250, 204, 21, 0.2);
+  border-color: rgba(250, 204, 21, 0.5);
+  transform: scale(1.02);
+}
+
+.brow.top2 {
+  background: rgba(203, 213, 225, 0.16);
+}
+
+.brow.top3 {
+  background: rgba(217, 119, 6, 0.18);
+}
+
+/*
+ * 結束後的動作列（下載排行榜圖片／回後台）。
+ *
+ * flex: none —— 人多的時候頒獎台加名次列會撐破畫面高度，而 .board 是置中的、
+ * .canvas 又不給捲，內容一超出就上下同時被切掉，這一排按鈕會第一個消失。
+ * 名次列自己讓步去捲，這排按鈕永遠留在畫面上。
+ */
+.end-acts {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 24px;
+  flex: none;
+}
+
+.board-rows {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* ---------------- 待排／待分類的項目 ---------------- */
+
+/*
+ * 排序題和分類題的項目本來只在手機上看得到，大螢幕一片空白，
+ * 台下根本不知道大家在排什麼。這裡把項目列出來（順序是打亂過的）。
+ */
+.item-pool {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.pool-chip {
+  background: var(--t-card);
+  border: 1px solid var(--t-line);
+  border-radius: var(--r);
+  padding: 10px 18px;
+  font-size: clamp(15px, 1.3vw, 22px);
+  font-weight: 700;
+}
+
+/* 順序題整個舞台都是空的，字可以放大一點 */
+.item-pool.big .pool-chip {
+  padding: 14px 24px;
+  font-size: clamp(17px, 1.6vw, 27px);
+}
+
+/* 有圖的項目：圖在上、字在下；純圖片的就只有圖 */
+.pool-chip.has-img {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+}
+
+.pool-chip .poimg {
+  display: block;
+  height: var(--poh, 112px);
+  max-width: 22vw;
+  object-fit: contain;
+  border-radius: var(--r-sm);
+  background: rgba(0, 0, 0, 0.32);
+}
+
+.cat-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.cat-stage .cat-cols {
+  flex: 1;
+  min-height: 0;
+}
+
+/* ---------------- 角落 QR（答題中隨時可加入） ---------------- */
+
+/*
+ * QR 是浮在上面的，題目區得自己讓出那塊空間，
+ * 不然長標題會直接跑到 QR 底下（「…都一定會死亡」就這樣被吃掉過）。
+ */
+.stage.qr-corner .q-meta,
+.stage.qr-corner .q-title {
+  padding-right: 190px;
+}
+
+.mini-qr {
+  position: absolute;
+  top: 62px;
+  right: 18px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 12px 8px 8px;
+  border-radius: var(--r-lg);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.32);
+  transition: opacity 0.25s;
+}
+
+/* 提問側欄拉開時會蓋到，讓它退到背後去 */
+.mini-qr.dim {
+  opacity: 0.15;
+}
+
+.mini-qr img {
+  width: 74px;
+  height: 74px;
+  display: block;
+  border-radius: 4px;
+}
+
+.mini-qr-cap {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  color: #0f172a;
+}
+
+.mini-qr-cap b {
+  font-size: 19px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+}
+
+.mini-qr-cap span {
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+}
+
+.mini-qr-enter-active,
+.mini-qr-leave-active {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.mini-qr-enter-from,
+.mini-qr-leave-to {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.94);
+}
+
+/* 螢幕不夠寬時 QR 會壓到題目，只留房號 */
+@media (max-width: 900px) {
+  .mini-qr img {
+    display: none;
+  }
+
+  .stage.qr-corner .q-meta,
+  .stage.qr-corner .q-title {
+    padding-right: 110px;
+  }
+}
+
+.stage-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  text-align: center;
+  color: var(--t-ink, #f8fafc);
+}
+
+.stage-empty h2 {
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.stage-empty p {
+  color: var(--t-muted);
+  font-size: 15px;
+}
+
+/* ---------------- 控制列 ---------------- */
+
+.controls {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 22px;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--t-line);
+  background: rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(12px);
+}
+
+.ctrl-main {
+  border: none;
+  border-radius: var(--r);
+  padding: 11px 26px;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+  background: var(--brand);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.45);
+  transition: filter 0.15s, opacity 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ctrl-main:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.ctrl-main:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.dots {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  overflow-x: auto;
+  max-width: 34vw;
+  padding: 4px 0;
+}
+
+.dot-s {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  flex: none;
+  transition: transform 0.15s, background 0.15s, width 0.15s;
+}
+
+.dot-s:hover {
+  transform: scale(1.35);
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.dot-s.on {
+  background: #818cf8;
+  width: 22px;
+  border-radius: 999px;
+}
+
+.dot-s.done {
+  background: rgba(129, 140, 248, 0.5);
+}
+
+/* ---------------- 提問側欄 ---------------- */
+
+.qa-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 380px;
+  max-width: 92vw;
+  background: #12162b;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: -18px 0 46px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  z-index: 50;
+  transform: translateX(100%);
+  transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.qa-panel.open {
+  transform: none;
+}
+
+.qa-panel header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.qa-panel header h3 {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.qa-panel .list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hq {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: var(--r);
+  padding: 12px;
+}
+
+.hq.answered {
+  opacity: 0.45;
+}
+
+.hq.pinned {
+  border-color: rgba(250, 204, 21, 0.5);
+  background: rgba(250, 204, 21, 0.08);
+}
+
+.hq p {
+  font-size: 14px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.hq .row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.hq .votes {
+  font-size: 12px;
+  font-weight: 800;
+  color: #a5b4fc;
+  background: rgba(99, 102, 241, 0.2);
+  border-radius: 999px;
+  padding: 2px 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.hq .by {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: 700;
+}
+
+.mini {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mini:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.mini.warn:hover {
+  background: rgba(239, 68, 68, 0.3);
+  border-color: #f87171;
+  color: #fecaca;
+}
+
+.qa-empty {
+  color: #64748b;
+  font-size: 13px;
+  text-align: center;
+  padding: 30px 0;
+  font-weight: 600;
+}
+
+/* 大螢幕的提問展示 */
+.qa-stage {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+  align-content: start;
+  overflow-y: auto;
+  padding: 4px;
+  flex: 1;
+  margin-top: 8px;
+}
+
+.qa-card {
+  background: var(--t-card);
+  border: 1px solid var(--t-line);
+  border-radius: var(--r-lg);
+  padding: 18px 20px;
+  animation: pop-in 0.34s ease-out;
+}
+
+.qa-card.pinned {
+  border-color: rgba(250, 204, 21, 0.6);
+  background: rgba(250, 204, 21, 0.1);
+}
+
+.qa-card.answered {
+  opacity: 0.4;
+}
+
+.qa-card .q {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.qa-card .m {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--t-muted);
+  font-weight: 800;
+}
+
+.qa-card .v {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  padding: 3px 10px;
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+@media (max-width: 900px) {
+  .canvas {
+    padding: 20px 16px;
+  }
+
+  .lobby {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+
+  .q-main {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .q-side {
+    width: auto;
+    flex-direction: row;
+    justify-content: center;
+    gap: 30px;
+  }
+
+  .p-opts {
+    grid-template-columns: 1fr;
+  }
+}
