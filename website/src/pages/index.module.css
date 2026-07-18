@@ -1,0 +1,117 @@
+/* 首頁樣式（CSS Module，區域作用域） */
+
+.heroBanner {
+  padding: 5rem 0 4rem;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(160deg, #611a9e 0%, #9333ea 55%, #c026d3 100%);
+  color: #fff;
+}
+
+.heroTitle {
+  font-size: 3.2rem;
+  margin-bottom: 0.5rem;
+}
+
+.heroSubtitle {
+  font-size: 1.35rem;
+  opacity: 0.95;
+  max-width: 46rem;
+  margin: 0 auto 0.5rem;
+}
+
+.heroTagline {
+  font-size: 1rem;
+  opacity: 0.85;
+  max-width: 40rem;
+  margin: 0 auto 2rem;
+}
+
+@media screen and (max-width: 996px) {
+  .heroBanner {
+    padding: 3rem 1.5rem;
+  }
+  .heroTitle {
+    font-size: 2.3rem;
+  }
+  .heroSubtitle {
+    font-size: 1.1rem;
+  }
+}
+
+.buttons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+/* 首頁截圖展示牆 */
+.showcase {
+  padding: 4rem 0;
+}
+
+.showcaseHero {
+  display: block;
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto 3rem;
+  border-radius: 14px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+}
+
+@media screen and (max-width: 900px) {
+  .grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media screen and (max-width: 560px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.card {
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--ifm-background-surface-color);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+}
+
+.card img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.card p {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  font-size: 0.95rem;
+}
+
+.card p b {
+  color: var(--ifm-color-primary);
+}
+
+.sectionTitle {
+  text-align: center;
+  margin-bottom: 2.5rem;
+}

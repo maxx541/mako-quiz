@@ -1,0 +1,37 @@
+/**
+ * 全站樣式。classic 主題預設帶 Infima。
+ * 主色取專案的「梅紫」主題方向：紫羅蘭色系。
+ */
+
+:root {
+  --ifm-color-primary: #9333ea;
+  --ifm-color-primary-dark: #7e22ce;
+  --ifm-color-primary-darker: #7620c0;
+  --ifm-color-primary-darkest: #611a9e;
+  --ifm-color-primary-light: #a855f7;
+  --ifm-color-primary-lighter: #b366f8;
+  --ifm-color-primary-lightest: #c88bfa;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+  --ifm-font-family-base: system-ui, -apple-system, "Segoe UI", "Noto Sans TC",
+    "PingFang TC", "Microsoft JhengHei", sans-serif;
+}
+
+/* 深色模式使用較亮的紫，避免對比不足 */
+[data-theme='dark'] {
+  --ifm-color-primary: #c084fc;
+  --ifm-color-primary-dark: #b366f8;
+  --ifm-color-primary-darker: #aa57f7;
+  --ifm-color-primary-darkest: #9333ea;
+  --ifm-color-primary-light: #cd9dfd;
+  --ifm-color-primary-lighter: #d4acfd;
+  --ifm-color-primary-lightest: #e6cffe;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+}
+
+/* 文件內的圖片統一加圓角與細邊框，看起來像截圖卡片 */
+.markdown img {
+  border-radius: 10px;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  max-width: 100%;
+}

@@ -5,6 +5,8 @@
 
 **Nuxt 4 + Nitro + Socket.IO**，介面全部使用 SVG 圖示（沒有 emoji）。
 
+📖 **完整說明文件：[maxx541.github.io/mako-quiz](https://maxx541.github.io/mako-quiz/)**
+
 ![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)
 ![Node](https://img.shields.io/badge/Node-%E2%89%A5%2022.12-brightgreen.svg)
 ![Nuxt](https://img.shields.io/badge/Nuxt-4-00DC82.svg)
