@@ -1,6 +1,8 @@
 <script setup lang="ts">
-const props = defineProps<{ res: any }>()
-const max = computed(() => Math.max(...(props.res?.words?.map((w: any) => w.count) || [1]), 1))
+import type { Aggregate } from '#shared/types/quiz'
+
+const props = defineProps<{ res: Extract<Aggregate, { kind: 'open' }> | null }>()
+const max = computed(() => Math.max(...(props.res?.words?.map((w) => w.count) || [1]), 1))
 </script>
 
 <template>

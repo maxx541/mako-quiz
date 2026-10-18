@@ -1,9 +1,20 @@
 import { createPresentation, uid } from './store'
 
-const o = (text: string, correct = false) => ({ id: uid('o_'), text, correct, image: null })
-const m = (left: string, right: string) => ({ id: uid('m_'), left, right })
-const it = (text: string) => ({ id: uid('i_'), text })
-const base = { image: null, note: '', speedBonus: 'inherit', explain: { text: '', image: null } }
+const o = (text: string, correct = false) => ({ id: uid('o_'), text, correct, image: null as string | null })
+const m = (left: string, right: string) => ({
+  id: uid('m_'),
+  left,
+  right,
+  leftImage: null as string | null,
+  rightImage: null as string | null,
+})
+const it = (text: string) => ({ id: uid('i_'), text, image: null as string | null })
+const base = {
+  image: null as string | null,
+  note: '',
+  speedBonus: 'inherit' as const,
+  explain: { text: '', image: null as string | null },
+}
 
 /** 建立一份涵蓋所有題型的示範簡報 */
 export function seedDemo() {
@@ -98,12 +109,12 @@ export function seedDemo() {
             { id: leaf, name: 'Leaf / AQUAPLUS' },
           ],
           items: [
-            { id: uid('i_'), text: 'CLANNAD', categoryId: key },
-            { id: uid('i_'), text: 'AIR', categoryId: key },
-            { id: uid('i_'), text: 'Fate/stay night', categoryId: tm },
-            { id: uid('i_'), text: '月姬', categoryId: tm },
-            { id: uid('i_'), text: 'To Heart', categoryId: leaf },
-            { id: uid('i_'), text: '白色相簿2', categoryId: leaf },
+            { id: uid('i_'), text: 'CLANNAD', image: null, categoryId: key },
+            { id: uid('i_'), text: 'AIR', image: null, categoryId: key },
+            { id: uid('i_'), text: 'Fate/stay night', image: null, categoryId: tm },
+            { id: uid('i_'), text: '月姬', image: null, categoryId: tm },
+            { id: uid('i_'), text: 'To Heart', image: null, categoryId: leaf },
+            { id: uid('i_'), text: '白色相簿2', image: null, categoryId: leaf },
           ],
           timeLimit: 60,
           points: 'double',
@@ -185,7 +196,9 @@ export function seedDemo() {
         image: null,
         stages: 5,
         stageSeconds: 6,
-        revealMode: 'tiles',
+        revealMode: 'tiles' as const,
+        grid: { rows: 5, cols: 7 },
+        stageTiles: [] as number[][],
         options: [o('古河渚', true), o('神尾觀鈴'), o('美坂栞'), o('遠野美凪')],
         poll: false,
         timeLimit: 60,

@@ -1,4 +1,20 @@
 ﻿import crypto from 'node:crypto'
+import type {
+  Aggregate,
+  Answer,
+  ExplainView,
+  GradeEntry,
+  HostView,
+  Player,
+  PlayerView,
+  Presentation,
+  PresentationSettings,
+  QaItem,
+  QaView,
+  RankedPlayer,
+  Slide,
+  Solution,
+} from '#shared/types/quiz'
 import { coverOf, uid } from './store'
 import {
   aggregate,
@@ -34,7 +50,7 @@ function newCode() {
   throw new Error('無法配發房間代碼，請稍後再試')
 }
 
-export function findSession(code: any) {
+export function findSession(code: string) {
   return sessions.get(String(code || '').trim()) || null
 }
 
@@ -48,7 +64,7 @@ export function listSessions() {
   }))
 }
 
-export function createSession(presentation: any, io: any) {
+export function createSession(presentation: Presentation, io: any) {
   const s = new Session(presentation, io)
   sessions.set(s.code, s)
   return s
@@ -72,13 +88,13 @@ export function startSweeper() {
 export class Session {
   io: any
   code: string
-  presentation: any
+  presentation: Presentation
   state: 'lobby' | 'live' | 'results' | 'leaderboard' | 'ended'
   index: number
-  players: Map<string, any>
+  players: Map<string, Player>
   byToken: Map<string, string>
-  answers: Map<string, Map<string, any>>
-  qa: any[]
+  answers: Map<string, Map<string, Answer>>
+  qa: QaItem[]
   startedAt: number | null
   endsAt: number | null
   /** 時間到之後就不再收答案，但時間到「不會」自動公布 —— 那要嘛主持人按，要嘛全員答完 */
@@ -98,7 +114,7 @@ export class Session {
   private _stageTimer: any
   private _syncTimer: any
 
-  constructor(presentation: any, io: any) {
+  constructor(presentation: Presentation, io: any) {
     this.io = io
     this.code = newCode()
     // 深拷貝：開始播放後編輯簡報不會影響進行中的場次
@@ -129,8 +145,8 @@ export class Session {
     return this.presentation.slides
   }
 
-  get settings() {
-    return this.presentation.settings || {}
+  get settings(): PresentationSettings {
+    return this.presentation.settings || ({} as PresentationSettings)
   }
 
   get currentSlide() {
@@ -257,6 +273,7 @@ export class Session {
     this.stage = 0
     this.startedAt = Date.now()
     const slide = this.currentSlide
+    if (!slide) return
     if (!this.answers.has(slide.id)) this.answers.set(slide.id, new Map())
     this.endsAt = slide.timeLimit > 0 && isInteractive(slide) ? this.startedAt + slide.timeLimit * 1000 : null
     if (this.endsAt) {
@@ -352,7 +369,7 @@ export class Session {
    * 分數刻意留到公布答案才入帳：送出的當下就加分的話，手機上的總分和排名
    * 會立刻跳動 —— 等於在主持人公布之前就先告訴大家自己答對了沒。
    */
-  private applyScores(slide: any) {
+  private applyScores(slide: Slide | null) {
     if (!slide || this._scored.has(slide.id)) return
     this._scored.add(slide.id)
     for (const [pid, a] of this.answers.get(slide.id) || []) {
@@ -394,7 +411,7 @@ export class Session {
 
   /* ---------------- 作答 ---------------- */
 
-  submit(playerId: string, slideId: string, value: any) {
+  submit(playerId: string, slideId: string, value: unknown) {
     const player = this.players.get(playerId)
     const slide = this.currentSlide
     if (!player || !slide) return { ok: false, error: '尚未開始' }
@@ -408,7 +425,7 @@ export class Session {
 
     if (slide.type === 'open') {
       const max = Math.max(1, slide.maxSubmissions || 1)
-      const list = existing ? [...existing.value] : []
+      const list = existing && Array.isArray(existing.value) ? [...existing.value] : []
       if (list.length >= max) return { ok: false, error: '已達提交次數上限' }
       const text = String(value || '').trim().slice(0, slide.maxChars || 200)
       if (!text) return { ok: false, error: '請先輸入內容' }
@@ -426,11 +443,11 @@ export class Session {
      */
     if (slide.type === 'list') {
       const max = Math.max(1, slide.maxSubmissions || 10)
-      const list = existing ? [...existing.value] : []
+      const list = existing && Array.isArray(existing.value) ? [...existing.value] : []
       if (list.length >= max) return { ok: false, error: `最多送出 ${max} 個答案` }
       const text = String(value || '').trim().slice(0, 80)
       if (!text) return { ok: false, error: '請先輸入答案' }
-      if (list.some((t: string) => sameListAnswer(slide, t, text))) return { ok: false, error: '這個答案你已經寫過了' }
+      if (list.some((t) => sameListAnswer(slide, t, text))) return { ok: false, error: '這個答案你已經寫過了' }
       list.push(text)
       const { ratio, correct } = grade(slide, list)
       const ms = Date.now() - this.startedAt!
@@ -491,13 +508,13 @@ export class Session {
    * 或這一輪已經猜過（answer.stage === 目前階段）。上一輪猜錯、這一輪還沒
    * 再猜的人不算 —— 要等他這一輪也出手，或計時器把大家帶到下一階段。
    */
-  private soupDone(pid: string, bucket: Map<string, any>) {
+  private soupDone(pid: string, bucket: Map<string, Answer>) {
     const a = bucket.get(pid)
     return !!a && (a.correct || a.stage === this.stage)
   }
 
   /** 海龜湯目前這一條提示，已經表態的人數（換提示就重新計）——給大螢幕顯示用 */
-  private soupAnsweredThisStage(slide: any) {
+  private soupAnsweredThisStage(slide: Slide) {
     const bucket = this.answers.get(slide.id)
     if (!bucket) return 0
     let n = 0
@@ -547,7 +564,7 @@ export class Session {
    */
   private maybeAutoReveal() {
     const slide = this.currentSlide
-    if (this.state !== 'live' || this.locked || !autoRevealable(slide)) return false
+    if (!slide || this.state !== 'live' || this.locked || !autoRevealable(slide)) return false
     const waiting = [...this.players.values()].filter((p) => p.connected)
     if (!waiting.length) return false
     const bucket = this.answers.get(slide.id)
@@ -570,7 +587,7 @@ export class Session {
     if (this.settings.reactionsEnabled === false) return { ok: false, error: '主持人已關閉表情符號' }
 
     const list = this.presentation.reactions || []
-    const found = list.find((r: any) => r.id === reactionId)
+    const found = list.find((r) => r.id === reactionId)
     if (!found) return { ok: false, error: '沒有這個表情符號' }
 
     // 節流：每人每 700ms 最多一個，避免洗版或被拿來打伺服器
@@ -621,7 +638,7 @@ export class Session {
     return { ok: true }
   }
 
-  qaUpdate(questionId: string, patch: any) {
+  qaUpdate(questionId: string, patch: Partial<QaItem>) {
     const q = this.qa.find((x) => x.id === questionId)
     if (!q) return
     Object.assign(q, patch)
@@ -664,9 +681,9 @@ export class Session {
 
   /* ---------------- 檢視資料 ---------------- */
 
-  entriesFor(slide: any) {
+  entriesFor(slide: Slide): GradeEntry[] {
     const bucket = this.answers.get(slide.id) || new Map()
-    const out: any[] = []
+    const out: GradeEntry[] = []
     for (const [pid, a] of bucket) {
       const p = this.players.get(pid)
       if (!p) continue
@@ -675,7 +692,7 @@ export class Session {
     return out
   }
 
-  leaderboard(limit = 0) {
+  leaderboard(limit = 0): RankedPlayer[] {
     const arr = [...this.players.values()]
       .map((p) => ({ id: p.id, name: p.name, avatar: p.avatar || null, score: p.score, streak: p.streak, connected: p.connected }))
       .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
@@ -683,7 +700,7 @@ export class Session {
     return limit > 0 ? arr.slice(0, limit) : arr
   }
 
-  hostView() {
+  hostView(): HostView {
     const slide = this.currentSlide
     // 海龜湯每換一條提示就重新算「這一輪答了幾個」；其他題型看整題累計的作答人數
     const answered = slide
@@ -721,7 +738,7 @@ export class Session {
             displayItems: displayItemsFor(slide),
           }
         : null,
-      outline: this.slides.map((s: any) => ({ id: s.id, type: s.type, title: s.title })),
+      outline: this.slides.map((s) => ({ id: s.id, type: s.type, title: s.title })),
       endsAt: this.endsAt,
       serverNow: Date.now(),
       playerCount: this.players.size,
@@ -736,7 +753,7 @@ export class Session {
     }
   }
 
-  playerView(player: any) {
+  playerView(player: Player): PlayerView {
     const slide = this.currentSlide
     const bucket = slide ? this.answers.get(slide.id) : null
     const mine = bucket?.get(player.id) || null
@@ -815,7 +832,7 @@ export class Session {
     for (const id of this.hostSockets) this.io.to(id).emit('host:sync', view)
   }
 
-  syncPlayer(player: any) {
+  syncPlayer(player: Player) {
     if (player.socketId) this.io.to(player.socketId).emit('player:sync', this.playerView(player))
   }
 
@@ -845,13 +862,13 @@ export class Session {
 
   /** 匯出成績報表 */
   report() {
-    const slides = this.slides.filter((s: any) => isInteractive(s))
+    const slides = this.slides.filter((s) => isInteractive(s))
     return {
       code: this.code,
       title: this.presentation.title,
       startedAt: this.createdAt,
       players: this.leaderboard(),
-      slides: slides.map((s: any) => ({
+      slides: slides.map((s) => ({
         id: s.id,
         type: s.type,
         title: s.title,

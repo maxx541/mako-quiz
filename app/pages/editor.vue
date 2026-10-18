@@ -1,12 +1,20 @@
 <script setup lang="ts">
+import type { Points, Presentation, Slide, SlideType, SlideTypeMeta, SpeedBonus } from '#shared/types/quiz'
+import { isChoiceSlide } from '~/utils/slideGuard'
+
 useHead({ title: '編輯簡報 · Makoquiz' })
 
 const route = useRoute()
 const id = String(route.query.id || '')
 
-const pres = ref<any>(null)
+const pres = ref<Presentation | null>(null)
+function mustPres() {
+  const p = pres.value
+  if (!p) throw new Error('簡報尚未載入')
+  return p
+}
 const cur = ref(0)
-const types = ref<Record<string, any>>({})
+const types = ref<Partial<Record<SlideType, SlideTypeMeta>>>({})
 const saveState = ref<'saved' | 'dirty' | 'saving' | 'failed'>('saved')
 const picking = ref<null | 'add' | 'replace'>(null)
 
@@ -30,9 +38,9 @@ const speedBonusEffective = computed(() => {
  */
 function setGrid(key: 'rows' | 'cols', value: number) {
   const s = slide.value
-  if (!s) return
+  if (!s || s.type !== 'reveal') return
   s.grid = { rows: s.grid?.rows || 5, cols: s.grid?.cols || 7, [key]: value }
-  if (s.stageTiles?.some((t: number[]) => t?.length)) {
+  if (s.stageTiles?.some((t) => t?.length)) {
     s.stageTiles = []
     toast('格數改了，原本排好的揭露順序已清空', 'bad')
   }
@@ -45,7 +53,7 @@ const SAVE_LABEL = { saved: '已儲存', dirty: '編輯中…', saving: '儲存�
 
 let saveTimer: any = null
 
-function touch() {
+function touch(..._args: unknown[]) {
   saveState.value = 'dirty'
   clearTimeout(saveTimer)
   saveTimer = setTimeout(save, 700)
@@ -59,17 +67,17 @@ async function save() {
     await api(`/presentations/${id}`, {
       method: 'PUT',
       body: {
-        title: pres.value.title,
-        description: pres.value.description,
-        theme: pres.value.theme,
-        background: pres.value.background,
-        cover: pres.value.cover,
-        lobbyMusic: pres.value.lobbyMusic,
-        quizMusic: pres.value.quizMusic,
-        quizMusicVolume: pres.value.quizMusicVolume,
-        reactions: pres.value.reactions,
-        settings: pres.value.settings,
-        slides: pres.value.slides,
+        title: mustPres().title,
+        description: mustPres().description,
+        theme: mustPres().theme,
+        background: mustPres().background,
+        cover: mustPres().cover,
+        lobbyMusic: mustPres().lobbyMusic,
+        quizMusic: mustPres().quizMusic,
+        quizMusicVolume: mustPres().quizMusicVolume,
+        reactions: mustPres().reactions,
+        settings: mustPres().settings,
+        slides: mustPres().slides,
       },
       silent: true,
     })
@@ -84,8 +92,8 @@ onMounted(async () => {
   if (!auth.token) return auth.gotoLogin()
   if (!id) return navigateTo('/admin')
   try {
-    types.value = await api('/slide-types')
-    pres.value = await api('/presentations/' + id)
+    types.value = await api<Partial<Record<SlideType, SlideTypeMeta>>>('/slide-types')
+    pres.value = await api<Presentation>('/presentations/' + id)
   } catch (err: any) {
     toast('載入失敗：' + err.message, 'bad')
   }
@@ -140,7 +148,8 @@ const curProblems = computed(() => (slide.value ? problems(slide.value) : []))
 /* ---------------- 投影片操作 ---------------- */
 
 function moveSlide(from: number, to: number) {
-  const slides = pres.value.slides
+  const slides = pres.value?.slides
+  if (!slides) return
   if (to < 0 || to >= slides.length || from === to) return
   /*
    * 用 id 記住「原本選中的是哪一張」，不要去算 index。
@@ -148,9 +157,11 @@ function moveSlide(from: number, to: number) {
    * 跨格拖曳會選到別張投影片。
    */
   const curId = slides[cur.value]?.id
-  const [s] = slides.splice(from, 1)
+  const s = slides[from]
+  if (!s) return
+  slides.splice(from, 1)
   slides.splice(to, 0, s)
-  const back = slides.findIndex((x: any) => x.id === curId)
+  const back = slides.findIndex((x) => x.id === curId)
   cur.value = back >= 0 ? back : Math.min(to, slides.length - 1)
   touch()
 }
@@ -166,23 +177,23 @@ function moveSlide(from: number, to: number) {
 const settingsOpen = ref(false)
 
 /** 「統一套用」的暫存值。不是簡報的欄位，只是這個彈窗裡的選擇。 */
-const bulk = ref({ timeLimit: 30, points: 'standard' as string })
+const bulk = ref({ timeLimit: 30, points: 'standard' as Points })
 
 /** 這幾種題型本來就沒有時間／分數可言，算數量時要排掉，不然按鈕會騙人 */
-const timedSlides = computed(() => (pres.value?.slides || []).filter((s: any) => !['content', 'qa'].includes(s.type)))
+const timedSlides = computed(() => (pres.value?.slides || []).filter((s) => !['content', 'qa'].includes(s.type)))
 const scoredSlides = computed(() =>
-  (pres.value?.slides || []).filter((s: any) => !['content', 'qa', 'open', 'scale'].includes(s.type))
+  (pres.value?.slides || []).filter((s) => !['content', 'qa', 'open', 'scale'].includes(s.type))
 )
 /*
  * 按鈕上的數字要是「真的會被改到幾題」，不是「總共幾題」。
  * 寫「套用到 13 題」但確認框說「把 11 題改掉」，使用者只會想「那另外 2 題呢？」
  */
-const timedCount = computed(() => timedSlides.value.filter((s: any) => s.timeLimit !== bulk.value.timeLimit).length)
-const scoredCount = computed(() => scoredSlides.value.filter((s: any) => s.points !== bulk.value.points).length)
+const timedCount = computed(() => timedSlides.value.filter((s) => s.timeLimit !== bulk.value.timeLimit).length)
+const scoredCount = computed(() => scoredSlides.value.filter((s) => s.points !== bulk.value.points).length)
 
 /** 有幾題自己設了速度加分，不跟著整份簡報的預設走 */
 const speedOverrides = computed(
-  () => (pres.value?.slides || []).filter((s: any) => s.speedBonus && s.speedBonus !== 'inherit').length
+  () => (pres.value?.slides || []).filter((s) => s.speedBonus && s.speedBonus !== 'inherit').length
 )
 
 const BULK_LABEL: Record<string, string> = {
@@ -199,12 +210,15 @@ const BULK_LABEL: Record<string, string> = {
  */
 async function applyAll(key: 'timeLimit' | 'points' | 'speedBonus') {
   const targets =
-    key === 'timeLimit' ? timedSlides.value : key === 'points' ? scoredSlides.value : pres.value.slides
+    key === 'timeLimit' ? timedSlides.value : key === 'points' ? scoredSlides.value : pres.value?.slides || []
   if (!targets.length) return
 
-  const want = key === 'speedBonus' ? 'inherit' : (bulk.value as any)[key]
+  const want: number | Points | SpeedBonus =
+    key === 'speedBonus' ? 'inherit' : key === 'timeLimit' ? bulk.value.timeLimit : bulk.value.points
   // 只算「真的會被改到」的，說「覆蓋 12 題」但其實只有 3 題不一樣，那是嚇人
-  const changing = targets.filter((s: any) => (key === 'speedBonus' ? (s.speedBonus || 'inherit') !== 'inherit' : s[key] !== want))
+  const changing = targets.filter((s) =>
+    key === 'speedBonus' ? (s.speedBonus || 'inherit') !== 'inherit' : s[key] !== want
+  )
   if (!changing.length) return toast(`所有題目的${BULK_LABEL[key]}本來就是這樣了`, 'ok')
 
   const yes = await confirmDialog({
@@ -218,7 +232,11 @@ async function applyAll(key: 'timeLimit' | 'points' | 'speedBonus') {
   })
   if (!yes) return
 
-  for (const s of changing) (s as any)[key] = want
+  for (const s of changing) {
+    if (key === 'speedBonus') s.speedBonus = 'inherit'
+    else if (key === 'timeLimit') s.timeLimit = bulk.value.timeLimit
+    else s.points = bulk.value.points
+  }
   touch()
   toast(`${changing.length} 題的${BULK_LABEL[key]}已統一`, 'ok')
 }
@@ -262,9 +280,13 @@ const optOver = ref<number | null>(null)
  * 那是「第幾個選項」的識別色，手機上的按鈕位置也是照 index 排。
  */
 function moveOption(from: number, to: number) {
-  const list = slide.value?.options
-  if (!list || to < 0 || to >= list.length || from === to) return
-  const [o] = list.splice(from, 1)
+  const s = slide.value
+  if (!s || !('options' in s)) return
+  const list = s.options
+  if (to < 0 || to >= list.length || from === to) return
+  const o = list[from]
+  if (!o) return
+  list.splice(from, 1)
   list.splice(to, 0, o)
   touch()
 }
@@ -290,54 +312,62 @@ function onOptDragEnd() {
 }
 
 function dupSlide(i: number) {
-  const copy = JSON.parse(JSON.stringify(pres.value.slides[i]))
+  const src = pres.value?.slides[i]
+  if (!src || !pres.value) return
+  const copy = JSON.parse(JSON.stringify(src)) as Slide
   copy.id = uid('s_')
-  for (const key of ['options', 'pairs', 'items']) {
-    if (Array.isArray(copy[key])) copy[key] = copy[key].map((x: any) => ({ ...x, id: uid(key[0] + '_') }))
-  }
-  pres.value.slides.splice(i + 1, 0, copy)
+  if ('options' in copy) copy.options = copy.options.map((x) => ({ ...x, id: uid('o_') }))
+  if ('pairs' in copy) copy.pairs = copy.pairs.map((x) => ({ ...x, id: uid('m_') }))
+  if ('items' in copy) copy.items = copy.items.map((x) => ({ ...x, id: uid('i_') }))
+  mustPres().slides.splice(i + 1, 0, copy)
   cur.value = i + 1
   touch()
 }
 
 async function delSlide(i: number) {
-  if (pres.value.slides.length === 1) return toast('至少要保留一張投影片', 'bad')
+  if (!pres.value) return
+  if (mustPres().slides.length === 1) return toast('至少要保留一張投影片', 'bad')
   const yes = await confirmDialog({ title: '刪除這張投影片？', message: '刪除後無法復原。', okText: '刪除', danger: true })
   if (!yes) return
-  pres.value.slides.splice(i, 1)
-  cur.value = Math.min(cur.value, pres.value.slides.length - 1)
+  mustPres().slides.splice(i, 1)
+  cur.value = Math.min(cur.value, mustPres().slides.length - 1)
   touch()
 }
 
 async function applyType(type: string) {
   const mode = picking.value
   picking.value = null
-  const fresh = await api<any>('/slides/new', { method: 'POST', body: { type } })
+  if (!pres.value) return
+  const fresh = await api<Slide>('/slides/new', { method: 'POST', body: { type } })
   if (mode === 'add') {
-    pres.value.slides.splice(cur.value + 1, 0, fresh)
-    cur.value = Math.min(cur.value + 1, pres.value.slides.length - 1)
+    mustPres().slides.splice(cur.value + 1, 0, fresh)
+    cur.value = Math.min(cur.value + 1, mustPres().slides.length - 1)
   } else {
-    const old = pres.value.slides[cur.value]
+    const old = mustPres().slides[cur.value]
+    if (!old) return
     fresh.id = old.id
     fresh.title = old.title
     fresh.note = old.note
     fresh.image = old.image
-    pres.value.slides[cur.value] = fresh
+    mustPres().slides[cur.value] = fresh
   }
   touch()
 }
 
-const typeGroups = computed(() => ({
-  quiz: Object.entries(types.value).filter(([, t]: any) => t.group === 'quiz'),
-  media: Object.entries(types.value).filter(([, t]: any) => t.group === 'media'),
-  interact: Object.entries(types.value).filter(([, t]: any) => t.group === 'interact'),
-}))
+const typeGroups = computed(() => {
+  const entries = Object.entries(types.value).filter((entry): entry is [string, SlideTypeMeta] => !!entry[1])
+  return {
+    quiz: entries.filter(([, t]) => t.group === 'quiz'),
+    media: entries.filter(([, t]) => t.group === 'media'),
+    interact: entries.filter(([, t]) => t.group === 'interact'),
+  }
+})
 
-const TYPE_GROUP_LABELS: Record<string, string> = {
+const TYPE_GROUP_LABELS = {
   quiz: '測驗題型（會計分）',
   media: '圖片與音樂',
   interact: '互動與內容',
-}
+} as const
 
 /* ---------------- 背景 ---------------- */
 
@@ -361,11 +391,11 @@ async function uploadBackground(file: File | undefined | null) {
       headers: auth.token ? { Authorization: 'Bearer ' + auth.token } : undefined,
     })
     if (res.kind !== 'image') throw new Error('背景只能用圖片')
-    pres.value.background.image = res.url
-    if (pres.value.background.auto !== false) {
+    mustPres().background.image = res.url
+    if (mustPres().background.auto !== false) {
       const tone = await analyzeImage(res.url)
-      pres.value.background.dim = tone.dim
-      pres.value.background.blur = tone.blur
+      mustPres().background.dim = tone.dim
+      mustPres().background.blur = tone.blur
       toast(`已自動最佳化：遮罩 ${tone.dim}%、模糊 ${tone.blur}px`, 'ok')
     } else {
       toast('背景已更新', 'ok')
@@ -380,23 +410,24 @@ async function uploadBackground(file: File | undefined | null) {
 }
 
 async function reAuto() {
-  if (!pres.value.background.image) return
-  const tone = await analyzeImage(pres.value.background.image)
-  pres.value.background.dim = tone.dim
-  pres.value.background.blur = tone.blur
-  pres.value.background.auto = true
+  const image = mustPres().background.image
+  if (!image) return
+  const tone = await analyzeImage(image)
+  mustPres().background.dim = tone.dim
+  mustPres().background.blur = tone.blur
+  mustPres().background.auto = true
   touch({ rail: false, side: true })
   toast(`已重新最佳化：遮罩 ${tone.dim}%、模糊 ${tone.blur}px`, 'ok')
 }
 
 function tweakBg() {
   // 手動動過就不再自動覆寫
-  pres.value.background.auto = false
+  mustPres().background.auto = false
   touch({ rail: false })
 }
 
 function clearBg() {
-  pres.value.background.image = null
+  mustPres().background.image = null
   touch({ rail: false, side: true })
 }
 
@@ -409,7 +440,7 @@ async function uploadReactions(files: FileList | null) {
   if (!files?.length) return
   reactionBusy.value = true
   try {
-    for (const file of [...files].slice(0, 12 - pres.value.reactions.length)) {
+    for (const file of [...files].slice(0, 12 - mustPres().reactions.length)) {
       const fd = new FormData()
       fd.append('file', file)
       const res = await $fetch<{ url: string; kind: string }>('/api/upload', {
@@ -418,7 +449,7 @@ async function uploadReactions(files: FileList | null) {
         headers: auth.token ? { Authorization: 'Bearer ' + auth.token } : undefined,
       })
       if (res.kind !== 'image') throw new Error('表情符號只能用圖片')
-      pres.value.reactions.push({
+      mustPres().reactions.push({
         id: uid('r_'),
         url: res.url,
         // 用檔名當預設說明，之後可以改
@@ -436,7 +467,7 @@ async function uploadReactions(files: FileList | null) {
 }
 
 function removeReaction(i: number) {
-  pres.value.reactions.splice(i, 1)
+  mustPres().reactions.splice(i, 1)
   touch({ rail: false, side: true })
 }
 
@@ -448,10 +479,12 @@ function removeReaction(i: number) {
  * 規則要跟伺服器的 coverOf() 一致：第一張有 slide.image 的題目。
  * 只看 slide.image —— 解說圖常常直接畫著答案，拿來當封面等於爆雷。
  */
-const autoCoverIndex = computed(() => (pres.value?.slides || []).findIndex((s: any) => s.image))
-const autoCover = computed(() =>
-  autoCoverIndex.value >= 0 ? pres.value.slides[autoCoverIndex.value].image : null
-)
+const autoCoverIndex = computed(() => (pres.value?.slides || []).findIndex((s) => s.image))
+const autoCover = computed(() => {
+  const slides = pres.value?.slides || []
+  const i = autoCoverIndex.value
+  return i >= 0 ? slides[i]?.image || null : null
+})
 
 /* ---------------- 大廳音樂 / 作答音樂 ---------------- */
 
@@ -476,7 +509,9 @@ async function uploadMusic(
       headers: auth.token ? { Authorization: 'Bearer ' + auth.token } : undefined,
     })
     if (res.kind !== 'audio') throw new Error('請選擇音訊檔')
-    pres.value[opts.field] = res.url
+    const p = pres.value
+    if (!p) return
+    p[opts.field] = res.url
     touch({ rail: false, side: true })
     toast(`${opts.label}已設定`, 'ok')
   } catch (err: any) {
@@ -506,6 +541,8 @@ const audioFileEl = ref<HTMLInputElement | null>(null)
  * 用網址就不佔那個額度。代價是那個檔案不在你手上。
  */
 async function pasteAudioUrl() {
+  const current = slide.value
+  if (!current || current.type !== 'music') return
   const url = await promptDialog({
     title: '用音檔網址',
     message:
@@ -513,14 +550,14 @@ async function pasteAudioUrl() {
       '好處：不佔上架的 50 MB 額度。\n' +
       '風險：檔案在對方的伺服器上，他換掉或刪掉，這一題就沒聲音了。',
     placeholder: 'https://example.com/song.mp3',
-    defaultValue: isExternal(slide.value?.audio || '') ? slide.value.audio : '',
+    defaultValue: isExternal(current.audio || '') ? current.audio || '' : '',
     okText: '使用這個網址',
   })
   if (url === null) return
   const v = url.trim()
   if (!v) return
   if (!/^https?:\/\//i.test(v)) return toast('網址要用 http:// 或 https:// 開頭', 'bad')
-  slide.value.audio = v
+  current.audio = v
   touch({ edit: true })
   toast('已設定音檔網址', 'ok')
 }
@@ -537,7 +574,9 @@ async function uploadAudio(file: File | undefined | null) {
       headers: auth.token ? { Authorization: 'Bearer ' + auth.token } : undefined,
     })
     if (res.kind !== 'audio') throw new Error('請選擇音訊檔')
-    slide.value.audio = res.url
+    const current = slide.value
+    if (!current || current.type !== 'music') return
+    current.audio = res.url
     touch({ edit: true })
     toast('音檔已上傳', 'ok')
   } catch (err: any) {
@@ -551,19 +590,25 @@ async function uploadAudio(file: File | undefined | null) {
 /* ---------------- 各題型的編輯操作 ---------------- */
 
 const addOption = () => {
-  slide.value.options.push({ id: uid('o_'), text: '', correct: false, image: null })
+  const s = slide.value
+  if (!s || !('options' in s)) return
+  s.options.push({ id: uid('o_'), text: '', correct: false, image: null })
   touch()
 }
 const delOption = (i: number) => {
-  slide.value.options.splice(i, 1)
+  const s = slide.value
+  if (!s || !('options' in s)) return
+  s.options.splice(i, 1)
   touch()
 }
-const markCorrect = (o: any) => {
-  if (slide.value.type === 'multi') o.correct = !o.correct
-  else slide.value.options.forEach((x: any) => (x.correct = x === o))
+const markCorrect = (o: { correct: boolean }) => {
+  const s = slide.value
+  if (!s || !('options' in s)) return
+  if (s.type === 'multi') o.correct = !o.correct
+  else s.options.forEach((x) => (x.correct = x === o))
   touch()
 }
-const moveItem = (arr: any[], i: number, d: number) => {
+const moveItem = (arr: unknown[], i: number, d: number) => {
   const j = i + d
   if (j < 0 || j >= arr.length) return
   const [x] = arr.splice(i, 1)
@@ -576,33 +621,42 @@ const moveItem = (arr: any[], i: number, d: number) => {
 const CAT_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#ec4899', '#14b8a6']
 
 function addCategory() {
-  slide.value.categories.push({ id: uid('c_'), name: '' })
+  const s = slide.value
+  if (!s || s.type !== 'categorize') return
+  s.categories.push({ id: uid('c_'), name: '' })
   touch({ edit: true })
 }
 
 /** 刪掉分類時，原本屬於它的項目要改掛到第一個分類，不然會變成孤兒 */
 function removeCategory(i: number) {
-  const gone = slide.value.categories[i]
-  slide.value.categories.splice(i, 1)
-  const fallback = slide.value.categories[0]?.id
-  for (const it of slide.value.items) if (it.categoryId === gone.id) it.categoryId = fallback
+  const s = slide.value
+  if (!s || s.type !== 'categorize') return
+  const gone = s.categories[i]
+  if (!gone) return
+  s.categories.splice(i, 1)
+  const fallback = s.categories[0]?.id
+  if (fallback) for (const it of s.items) if (it.categoryId === gone.id) it.categoryId = fallback
   touch({ edit: true })
 }
 
 function addCatItem() {
-  slide.value.items.push({ id: uid('i_'), text: '', image: null, categoryId: slide.value.categories[0]?.id })
+  const s = slide.value
+  if (!s || s.type !== 'categorize') return
+  s.items.push({ id: uid('i_'), text: '', image: null, categoryId: s.categories[0]?.id || '' })
   touch({ edit: true })
 }
 
 function togglePoll(v: boolean) {
-  slide.value.poll = v
-  if (v) slide.value.points = 'none'
-  else if (slide.value.points === 'none') slide.value.points = 'standard'
+  const s = slide.value
+  if (!s || !('poll' in s)) return
+  s.poll = v
+  if (v) s.points = 'none'
+  else if (s.points === 'none') s.points = 'standard'
   touch()
 }
 
 async function play() {
-  if (!pres.value.slides.length) return toast('請先新增至少一張投影片', 'bad')
+  if (!mustPres().slides.length) return toast('請先新增至少一張投影片', 'bad')
   await save()
   // 上台才發現音樂題沒音檔就來不及了，先掃一遍；堅持要播還是讓他播
   if (!(await confirmPlay(pres.value))) return
@@ -624,7 +678,7 @@ const previewStart = ref(0)
 const previewHost = ref<HTMLIFrameElement | null>(null)
 
 async function openPreview() {
-  if (!pres.value.slides.length) return toast('請先新增至少一張投影片', 'bad')
+  if (!mustPres().slides.length) return toast('請先新增至少一張投影片', 'bad')
   await save()
   // 直接從正在編輯的這一頁開始預覽，不用每次都從大廳按到目標題
   // （設在 open 當下，之後在編輯器切頁不會害 iframe 的 src 變動而重開一場）
@@ -662,11 +716,25 @@ const THEMES: [string, string, string][] = [
 ]
 
 const TIME_OPTIONS = [0, 10, 15, 20, 30, 45, 60, 90, 120, 180]
-const REVEAL_MODES: [string, string][] = [
+const POINT_OPTIONS = [
+  ['none', '不計分'],
+  ['standard', '標準'],
+  ['double', '雙倍'],
+] as const
+const SPEED_OPTIONS = [
+  ['inherit', '跟隨整份'],
+  ['on', '這題開'],
+  ['off', '這題關'],
+] as const
+const OPEN_DISPLAYS = [
+  ['cloud', '文字雲'],
+  ['list', '回覆列表'],
+] as const
+const REVEAL_MODES = [
   ['tiles', '格子揭開'],
   ['blur', '由糊變清'],
   ['zoom', '由近拉遠'],
-]
+] as const
 </script>
 
 <template>
@@ -915,7 +983,7 @@ const REVEAL_MODES: [string, string][] = [
           </template>
 
           <!-- 選擇題（含猜圖、音樂） -->
-          <template v-if="CHOICE_TYPES.includes(slide.type)">
+          <template v-if="isChoiceSlide(slide)">
             <div class="sec">
               <div class="sec-title">{{ slide.poll ? '投票選項' : '選項（點右邊的勾勾標記正確答案）' }}</div>
               <div
@@ -926,7 +994,7 @@ const REVEAL_MODES: [string, string][] = [
                 @dragover.prevent="optOver = i"
                 @drop.prevent="onOptDrop(i)"
               >
-                <div class="swatch" :style="{ background: OPTION_COLORS[i % OPTION_COLORS.length] }" />
+                <div class="swatch" :style="{ background: OPTION_COLORS[i % OPTION_COLORS.length] || '#888' }" />
                 <!-- 拖曳握把：整列設 draggable 會搶掉輸入框裡選字的操作，所以只讓這裡可以拖 -->
                 <button
                   class="opt-grip"
@@ -937,7 +1005,7 @@ const REVEAL_MODES: [string, string][] = [
                 >
                   <AppIcon name="grip" :size="14" />
                 </button>
-                <AppIcon :name="OPTION_SHAPES[i % OPTION_SHAPES.length]" :size="13" class="shape" />
+                <AppIcon :name="OPTION_SHAPES[i % OPTION_SHAPES.length] || 'circle'" :size="13" class="shape" />
                 <div class="opt-main">
                   <input v-model="o.text" type="text" :placeholder="`選項 ${i + 1}`" maxlength="120" @input="touch" />
                 </div>
@@ -1173,7 +1241,7 @@ const REVEAL_MODES: [string, string][] = [
           <div v-if="!['content', 'qa', 'open', 'scale'].includes(slide.type)" class="field">
             <label class="label">分數</label>
             <div class="seg">
-              <button v-for="p in [['none', '不計分'], ['standard', '標準'], ['double', '雙倍']]" :key="p[0]"
+              <button v-for="p in POINT_OPTIONS" :key="p[0]"
                 :class="{ on: slide.points === p[0] }" @click="slide.points = p[0]; touch()">{{ p[1] }}</button>
             </div>
           </div>
@@ -1242,7 +1310,7 @@ const REVEAL_MODES: [string, string][] = [
           <div v-if="!['content', 'qa', 'open', 'scale', ...STAGED_TYPES].includes(slide.type) && slide.points !== 'none'" class="field">
             <label class="label">這一題要不要速度加分</label>
             <div class="seg">
-              <button v-for="p in [['inherit', '跟隨整份'], ['on', '這題開'], ['off', '這題關']]" :key="p[0]"
+              <button v-for="p in SPEED_OPTIONS" :key="p[0]"
                 :class="{ on: (slide.speedBonus || 'inherit') === p[0] }" @click="slide.speedBonus = p[0]; touch()">{{ p[1] }}</button>
             </div>
             <p class="note">
@@ -1258,7 +1326,7 @@ const REVEAL_MODES: [string, string][] = [
             </p>
           </div>
 
-          <label v-if="['single', 'multi'].includes(slide.type)" class="switch mb">
+          <label v-if="slide.type === 'single' || slide.type === 'multi'" class="switch mb">
             <input type="checkbox" :checked="!!slide.poll" @change="togglePoll(($event.target as HTMLInputElement).checked)" />
             <span class="track" />
             <span>這是投票（沒有正確答案、不計分）</span>
@@ -1274,7 +1342,7 @@ const REVEAL_MODES: [string, string][] = [
             <p class="note">海龜湯建議留久一點，讓大家有時間想。</p>
           </div>
 
-          <template v-if="['type', 'soup', 'list'].includes(slide.type)">
+          <template v-if="slide.type === 'type' || slide.type === 'soup' || slide.type === 'list'">
             <label class="switch mb">
               <input type="checkbox" :checked="slide.ignoreCase !== false" @change="slide.ignoreCase = ($event.target as HTMLInputElement).checked; touch()" />
               <span class="track" /><span>忽略英文大小寫</span>
@@ -1307,7 +1375,7 @@ const REVEAL_MODES: [string, string][] = [
             <div class="field">
               <label class="label">顯示方式</label>
               <div class="seg">
-                <button v-for="p in [['cloud', '文字雲'], ['list', '回覆列表']]" :key="p[0]"
+                <button v-for="p in OPEN_DISPLAYS" :key="p[0]"
                   :class="{ on: slide.display === p[0] }" @click="slide.display = p[0]; touch()">{{ p[1] }}</button>
               </div>
             </div>
@@ -1373,7 +1441,7 @@ const REVEAL_MODES: [string, string][] = [
               <label class="label">分數</label>
               <div class="gs-row">
                 <div class="seg">
-                  <button v-for="p in [['none', '不計分'], ['standard', '標準'], ['double', '雙倍']]" :key="p[0]"
+                  <button v-for="p in POINT_OPTIONS" :key="p[0]"
                     :class="{ on: bulk.points === p[0] }" @click="bulk.points = p[0]">{{ p[1] }}</button>
                 </div>
                 <button class="btn btn-sm" :disabled="!scoredCount" @click="applyAll('points')">
@@ -1427,7 +1495,7 @@ const REVEAL_MODES: [string, string][] = [
         <div class="field">
           <label class="label">自訂背景圖</label>
 
-          <div v-if="pres.background.image" class="bg-preview" :class="'theme-' + pres.theme">
+          <div v-if="pres.background.image && bgPreview" class="bg-preview" :class="'theme-' + pres.theme">
             <div class="bg-layer" :style="bgPreview.image" />
             <div class="bg-scrim" :style="bgPreview.scrim" />
             <div class="bg-sample">
@@ -1492,7 +1560,7 @@ const REVEAL_MODES: [string, string][] = [
 
         <div v-if="pres.reactions.length" class="react-grid">
           <div v-for="(r, i) in pres.reactions" :key="r.id" class="react-cell">
-            <img :src="r.url" :alt="r.label" />
+            <img :src="r.url || ''" :alt="r.label" />
             <button class="chip-x" title="移除" @click="removeReaction(i)"><AppIcon name="x" :size="10" /></button>
             <input v-model="r.label" class="react-label" maxlength="20" placeholder="說明" @input="touch({ rail: false })" />
           </div>

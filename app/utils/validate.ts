@@ -1,26 +1,28 @@
+import type { Presentation, Slide, SlideType } from '#shared/types/quiz'
+
 /**
  * 投影片的完整性檢查。
  *
  * 編輯器用它在每一頁旁邊標出問題；播放前也用同一份規則整份掃一次，
  * 免得上台才發現音樂題沒音檔。兩邊共用才不會有一邊漏檢查。
  */
-export function slideProblems(s: any): string[] {
+export function slideProblems(s: Slide): string[] {
   const out: string[] = []
   if (!String(s.title || '').trim()) out.push('題目還沒有填寫')
   switch (s.type) {
     case 'soup':
-      if (s.hints.filter((h: any) => h.text.trim()).length < 2) out.push('至少要有兩條提示')
+      if (s.hints.filter((h) => h.text.trim()).length < 2) out.push('至少要有兩條提示')
       if (!s.accepted.some((a: string) => a.trim())) out.push('至少要填一個可接受的答案')
       break
     case 'reveal':
       if (!s.image) out.push('還沒有上傳要猜的圖片')
-      if (s.options.filter((o: any) => o.text.trim()).length < 2) out.push('至少要有兩個選項有文字')
-      if (!s.options.some((o: any) => o.correct)) out.push('還沒有標記正確答案')
+      if (s.options.filter((o) => o.text.trim()).length < 2) out.push('至少要有兩個選項有文字')
+      if (!s.options.some((o) => o.correct)) out.push('還沒有標記正確答案')
       break
     case 'music':
       if (!s.audio) out.push('還沒有上傳音檔')
-      if (s.options.filter((o: any) => o.text.trim() || o.image).length < 2) out.push('至少要有兩個選項有內容')
-      if (!s.poll && !s.options.some((o: any) => o.correct)) out.push('還沒有標記正確答案')
+      if (s.options.filter((o) => o.text.trim() || o.image).length < 2) out.push('至少要有兩個選項有內容')
+      if (!s.poll && !s.options.some((o) => o.correct)) out.push('還沒有標記正確答案')
       break
     case 'number':
       if (!Number.isFinite(Number(s.answer))) out.push('正確答案必須是數字')
@@ -33,10 +35,10 @@ export function slideProblems(s: any): string[] {
     case 'truefalse':
     case 'multi': {
       // 有圖片的選項就算沒文字也算數
-      const filled = s.options.filter((o: any) => o.text.trim() || o.image)
+      const filled = s.options.filter((o) => o.text.trim() || o.image)
       if (filled.length < 2) out.push('至少要有兩個選項有內容')
       if (!s.poll) {
-        const n = s.options.filter((o: any) => o.correct).length
+        const n = s.options.filter((o) => o.correct).length
         if (n === 0) out.push('還沒有標記正確答案（或把它切換成「投票」）')
         if (s.type !== 'multi' && n > 1) out.push('單選題只能有一個正確答案')
       }
@@ -45,24 +47,24 @@ export function slideProblems(s: any): string[] {
     case 'match':
       // 一格只要有文字或有圖就算數 —— 純圖片的配對題（例：角色立繪 ↔ 名字）很常見
       if (
-        s.pairs.filter((p: any) => (p.left.trim() || p.leftImage) && (p.right.trim() || p.rightImage)).length < 2
+        s.pairs.filter((p) => (p.left.trim() || p.leftImage) && (p.right.trim() || p.rightImage)).length < 2
       ) {
         out.push('至少需要兩組完整的配對（每格要有文字或圖片）')
       }
       break
     case 'categorize': {
-      if (s.categories.filter((c: any) => c.name.trim()).length < 2) out.push('至少需要兩個有名稱的分類')
+      if (s.categories.filter((c) => c.name.trim()).length < 2) out.push('至少需要兩個有名稱的分類')
       // 有文字或有圖都算填好了 —— 純圖片的分類題（例：把立繪分到所屬作品）很常見
-      if (s.items.filter((i: any) => i.text.trim() || i.image).length < 2) out.push('至少需要兩個項目（要有文字或圖片）')
-      if (s.items.some((i: any) => !s.categories.find((c: any) => c.id === i.categoryId))) out.push('有項目還沒選分類')
+      if (s.items.filter((i) => i.text.trim() || i.image).length < 2) out.push('至少需要兩個項目（要有文字或圖片）')
+      if (s.items.some((i) => !s.categories.find((c) => c.id === i.categoryId))) out.push('有項目還沒選分類')
       // 空的分類玩起來很怪：畫面上有一欄永遠不會有東西
-      const empty = s.categories.filter((c: any) => !s.items.some((i: any) => i.categoryId === c.id && i.text.trim()))
-      if (empty.length) out.push(`「${empty.map((c: any) => c.name || '未命名').join('、')}」裡面沒有任何項目`)
+      const empty = s.categories.filter((c) => !s.items.some((i) => i.categoryId === c.id && i.text.trim()))
+      if (empty.length) out.push(`「${empty.map((c) => c.name || '未命名').join('、')}」裡面沒有任何項目`)
       break
     }
     case 'order':
       // 有文字或有圖都算填好了 —— 純圖片的順序題（例：把 CG 依劇情排先後）很常見
-      if (s.items.filter((i: any) => i.text.trim() || i.image).length < 2) out.push('至少需要兩個項目（要有文字或圖片）')
+      if (s.items.filter((i) => i.text.trim() || i.image).length < 2) out.push('至少需要兩個項目（要有文字或圖片）')
       break
     case 'type':
       if (!s.accepted.some((a: string) => a.trim())) out.push('至少要填一個可接受的答案')
@@ -74,13 +76,13 @@ export function slideProblems(s: any): string[] {
   return out
 }
 
-export type SlideIssue = { index: number; title: string; type: string; problems: string[] }
+export type SlideIssue = { index: number; title: string; type: SlideType; problems: string[] }
 
 /** 整份簡報掃一遍，回傳有問題的頁 */
-export function presentationProblems(pres: any): SlideIssue[] {
+export function presentationProblems(pres: Pick<Presentation, 'slides'> | null | undefined): SlideIssue[] {
   return (pres?.slides || [])
-    .map((s: any, i: number) => ({ index: i, title: s.title, type: s.type, problems: slideProblems(s) }))
-    .filter((x: SlideIssue) => x.problems.length > 0)
+    .map((s, i) => ({ index: i, title: s.title, type: s.type, problems: slideProblems(s) }))
+    .filter((x) => x.problems.length > 0)
 }
 
 /**
@@ -89,7 +91,7 @@ export function presentationProblems(pres: any): SlideIssue[] {
  *
  * @returns 要不要繼續播放
  */
-export async function confirmPlay(pres: any): Promise<boolean> {
+export async function confirmPlay(pres: Pick<Presentation, 'slides'> | null | undefined): Promise<boolean> {
   const issues = presentationProblems(pres)
   if (!issues.length) return true
 

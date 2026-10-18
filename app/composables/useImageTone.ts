@@ -28,7 +28,7 @@ export async function analyzeImage(url: string): Promise<Tone> {
   const lum: number[] = []
   for (let i = 0; i < data.length; i += 4) {
     // Rec. 709 相對亮度
-    lum.push((0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]) / 255)
+    lum.push((0.2126 * (data[i] ?? 0) + 0.7152 * (data[i + 1] ?? 0) + 0.0722 * (data[i + 2] ?? 0)) / 255)
   }
 
   const luminance = lum.reduce((a, b) => a + b, 0) / lum.length
@@ -40,11 +40,11 @@ export async function analyzeImage(url: string): Promise<Tone> {
     for (let x = 0; x < W; x++) {
       const i = y * W + x
       if (x + 1 < W) {
-        diff += Math.abs(lum[i] - lum[i + 1])
+        diff += Math.abs((lum[i] ?? 0) - (lum[i + 1] ?? 0))
         n++
       }
       if (y + 1 < H) {
-        diff += Math.abs(lum[i] - lum[i + W])
+        diff += Math.abs((lum[i] ?? 0) - (lum[i + W] ?? 0))
         n++
       }
     }

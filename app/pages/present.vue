@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import type { HostView, RankedPlayer } from '#shared/types/quiz'
+import { aggregateKind, isChoiceSlide } from '~/utils/slideGuard'
+
 useHead({ title: '播放中 · Makoquiz' })
 
 const route = useRoute()
@@ -15,7 +18,7 @@ const isPreview = route.query.preview === '1'
 /** 預覽時直接跳到編輯器正在編輯的那一頁（-1 = 從大廳開始） */
 const previewStart = isPreview ? Number(route.query.start ?? -1) : -1
 
-const view = ref<any>(null)
+const view = ref<HostView | null>(null)
 const qr = ref('')
 const fatal = ref('')
 const qaOpen = ref(false)
@@ -25,6 +28,15 @@ const { left, start, clear } = useCountdown()
 
 const slide = computed(() => view.value?.slide)
 const results = computed(() => view.value?.results)
+const barRes = computed(() => aggregateKind(results.value, 'bars'))
+const pairRes = computed(() => aggregateKind(results.value, 'pairs'))
+const catRes = computed(() => aggregateKind(results.value, 'categorize'))
+const orderRes = computed(() => aggregateKind(results.value, 'order'))
+const answerRes = computed(() => aggregateKind(results.value, 'answers'))
+const listRes = computed(() => aggregateKind(results.value, 'list'))
+const numberRes = computed(() => aggregateKind(results.value, 'number'))
+const scaleRes = computed(() => aggregateKind(results.value, 'scale'))
+const openRes = computed(() => aggregateKind(results.value, 'open'))
 const revealed = computed(() => view.value?.state === 'results')
 const bg = computed(() => backgroundLayers(view.value?.background))
 const RESUME_KEY = 'ql_host_' + id
@@ -47,12 +59,11 @@ function rowsLayout(n: number, hasImg: boolean) {
   return { twoCol, imgH: !n ? 0 : rows <= 2 ? 104 : rows === 3 ? 92 : 84 }
 }
 
-const pairLayout = computed(() =>
-  rowsLayout(
-    slide.value?.pairs?.length || 0,
-    (slide.value?.pairs || []).some((p: any) => p.leftImage || p.rightImage)
-  )
-)
+const pairLayout = computed(() => {
+  const s = slide.value
+  if (!s || s.type !== 'match') return rowsLayout(0, false)
+  return rowsLayout(s.pairs.length, s.pairs.some((p) => p.leftImage || p.rightImage))
+})
 
 /**
  * 配對題的列很窄（編號＋小圖＋箭頭＋問號），撐滿整個寬度的話右邊會空一大片。
@@ -65,9 +76,11 @@ const matchSplit = computed(
   () => slide.value?.type === 'match' && !!slide.value?.image && !pairLayout.value.twoCol
 )
 
-const orderLayout = computed(() =>
-  rowsLayout(slide.value?.items?.length || 0, (slide.value?.items || []).some((i: any) => i.image))
-)
+const orderLayout = computed(() => {
+  const s = slide.value
+  if (!s || (s.type !== 'order' && s.type !== 'categorize')) return rowsLayout(0, false)
+  return rowsLayout(s.items.length, s.items.some((i) => i.image))
+})
 
 /** 作答中大螢幕列出打亂的項目（item-pool），那裡是自由換行，只要縮圖大小 */
 const poolImgH = computed(() => {
@@ -99,7 +112,7 @@ function toggleAudio() {
 function restartAudio() {
   const el = audioEl.value
   if (!el) return
-  el.currentTime = Number(slide.value?.audioStart) || 0
+  el.currentTime = slide.value?.type === 'music' ? Number(slide.value.audioStart) || 0 : 0
   el.play().catch(() => {})
 }
 
@@ -131,7 +144,7 @@ const quizMuted = ref(false)
 const quizMusicWanted = computed(
   () =>
     !!view.value?.quizMusic &&
-    ['live', 'results', 'leaderboard'].includes(view.value?.state) &&
+    ['live', 'results', 'leaderboard'].includes(view.value?.state || '') &&
     slide.value?.type !== 'music'
 )
 
@@ -295,7 +308,7 @@ function actSfx(action: string, sfxName: string, payload?: any) {
  * 「公布答案」是整場的重頭戲，值得有自己的聲音；沒放 reveal.* 就退回 advance.*。
  */
 function mainAct() {
-  const willReveal = view.value?.state === 'live' && !['content', 'qa'].includes(slide.value?.type)
+  const willReveal = view.value?.state === 'live' && !['content', 'qa'].includes(slide.value?.type || '')
   playSfx(willReveal && sfx.has('reveal') ? 'reveal' : 'advance')
   act('advance')
 }
@@ -338,7 +351,10 @@ const RING = 2 * Math.PI * 54
 const showAddTime = computed(() => view.value?.state === 'live' && (view.value?.endsAt || view.value?.locked))
 /** 分階段題型還沒揭完時，主持人可以手動加速 */
 const showNextStage = computed(
-  () => view.value?.state === 'live' && STAGED_TYPES.includes(slide.value?.type) && view.value.stage < view.value.stages - 1
+  () => {
+    const v = view.value
+    return !!v && v.state === 'live' && STAGED_TYPES.includes(slide.value?.type || '') && v.stage < v.stages - 1
+  }
 )
 const showBoardBtn = computed(
   () => view.value && view.value.index >= 0 && !advanceIsBoard.value && !['lobby', 'leaderboard', 'ended'].includes(view.value.state)
@@ -370,7 +386,7 @@ async function endSession() {
   if (yes) act('end')
 }
 
-async function kick(p: any) {
+async function kick(p: RankedPlayer) {
   const yes = await confirmDialog({ title: `把「${p.name}」移出房間？`, okText: '移出', danger: true })
   if (yes) act('kick', { playerId: p.id })
 }
@@ -380,11 +396,12 @@ async function kick(p: any) {
 /** 前三名，排成「2 1 3」讓第一名在中間 */
 const podium3 = computed(() => {
   const p = view.value?.players ?? []
-  const at = (rank: number) => p.find((x: any) => x.rank === rank) || { id: 'empty' + rank, rank, name: '', score: 0 }
+  const at = (rank: number): RankedPlayer =>
+    p.find((x) => x.rank === rank) || { id: 'empty' + rank, rank, name: '', avatar: null, score: 0, streak: 0, connected: false }
   return [at(2), at(1), at(3)]
 })
 
-const rest = computed(() => (view.value?.players ?? []).filter((p: any) => p.rank > 3).slice(0, 7))
+const rest = computed(() => (view.value?.players ?? []).filter((p) => p.rank > 3).slice(0, 7))
 
 /**
  * 逐名揭曉：第三名 → 第二名 → 第一名 → 其餘名次。
@@ -393,7 +410,7 @@ const rest = computed(() => (view.value?.players ?? []).filter((p: any) => p.ran
  * 主持人一場下來會被拖死，所以那裡幾乎是立刻全開。
  */
 const podiumStep = ref(0)
-const onBoard = computed(() => ['leaderboard', 'ended'].includes(view.value?.state))
+const onBoard = computed(() => ['leaderboard', 'ended'].includes(view.value?.state || ''))
 let podiumTimers: any[] = []
 
 function clearPodium() {
@@ -410,8 +427,9 @@ watch(
   [onBoard, () => view.value?.state],
   () => {
     clearPodium()
-    if (!onBoard.value) return (podiumStep.value = 0)
-    const beats = view.value.state === 'ended' ? [700, 1900, 3100, 4000] : [80, 200, 320, 440]
+    const current = view.value
+    if (!onBoard.value || !current) return (podiumStep.value = 0)
+    const beats = current.state === 'ended' ? [700, 1900, 3100, 4000] : [80, 200, 320, 440]
     podiumStep.value = 0
     beats.forEach((ms, i) => podiumTimers.push(setTimeout(() => (podiumStep.value = i + 1), ms)))
   },
@@ -428,7 +446,9 @@ onBeforeUnmount(clearPodium)
  */
 async function downloadBoardImage() {
   try {
-    const players = view.value.players as any[]
+    const current = view.value
+    if (!current) return
+    const players = current.players
 
     /*
      * 先把會用到的頭像載進來 —— canvas 只能畫「已經載好」的圖，
@@ -488,7 +508,7 @@ async function downloadBoardImage() {
       forest: '#0b2a22',
       paper: '#1e293b', // 淺色主題的圖片還是用深色，分享出去比較好看
     }
-    g.fillStyle = themeBg[view.value.theme] || '#0f172a'
+    g.fillStyle = themeBg[current.theme] || '#0f172a'
     g.fillRect(0, 0, W, H)
 
     // 標題
@@ -498,11 +518,11 @@ async function downloadBoardImage() {
     g.fillText('最終排名', W / 2, top + 26)
     g.fillStyle = INK
     g.font = font(34, 900)
-    const title = view.value.title.length > 20 ? view.value.title.slice(0, 19) + '…' : view.value.title
+    const title = current.title.length > 20 ? current.title.slice(0, 19) + '…' : current.title
     g.fillText(title, W / 2, top + 70)
     g.fillStyle = MUTED
     g.font = font(15, 600)
-    g.fillText(`${players.length} 位參與者 · 房間 ${view.value.code}`, W / 2, top + 100)
+    g.fillText(`${players.length} 位參與者 · 房間 ${current.code}`, W / 2, top + 100)
 
     const roundRect = (x: number, y: number, w: number, h: number, r: number) => {
       g.beginPath()
@@ -564,26 +584,27 @@ async function downloadBoardImage() {
       order.forEach((rank, i) => {
         const p = players.find((x) => x.rank === rank)
         const x = startX + i * (colW + gap)
-        const bh = blockH[rank]
+        const bh = blockH[rank] ?? 0
         const topY = baseY - bh
 
         if (p) {
           // 頭像（有上傳就用圖，外圈套獎牌色）
           const cx = x + colW / 2
           const cy = topY - 92
-          drawAvatar(p, cx, cy, 30, MEDAL[rank - 1], MEDAL[rank - 1])
+          const medal = MEDAL[rank - 1] || '#fff'
+          drawAvatar(p, cx, cy, 30, medal, medal)
 
           g.textAlign = 'center'
           g.fillStyle = INK
           g.font = font(17, 800)
           g.fillText(ellipsis(p.name, colW - 12), cx, topY - 38)
-          g.fillStyle = MEDAL[rank - 1]
+          g.fillStyle = medal
           g.font = font(21, 900)
           g.fillText(p.score.toLocaleString(), cx, topY - 14)
         }
 
         // 台座
-        g.fillStyle = p ? MEDAL[rank - 1] : 'rgba(255,255,255,0.06)'
+        g.fillStyle = p ? MEDAL[rank - 1] || '#fff' : 'rgba(255,255,255,0.06)'
         roundRect(x, topY, colW, bh, 10)
         g.fillStyle = p ? 'rgba(15,23,42,0.72)' : MUTED
         g.font = font(44, 900)
@@ -630,7 +651,7 @@ async function downloadBoardImage() {
     const blob: Blob = await new Promise((res) => c.toBlob((b) => res(b!), 'image/jpeg', 0.92))
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
-    a.download = `${view.value.title}-排行榜.jpg`
+    a.download = `${current.title}-排行榜.jpg`
     a.click()
     URL.revokeObjectURL(a.href)
     toast('排行榜圖片已下載', 'ok')
@@ -643,7 +664,7 @@ async function downloadBoardImage() {
 const CAT_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#ec4899', '#14b8a6']
 
 /** 答題過程才縮在角落；大廳本來就有大張的，排行榜之後也不用再讓人加入 */
-const showMiniQr = computed(() => ['live', 'results'].includes(view.value?.state))
+const showMiniQr = computed(() => ['live', 'results'].includes(view.value?.state || ''))
 
 const joinHost = computed(() => (view.value?.joinUrl || '').replace(/^https?:\/\//, '').replace(/\/\?c=\d+$/, ''))
 
@@ -669,7 +690,7 @@ async function copyJoinUrl() {
     toast(ok ? '已複製完整網址' : '複製失敗，請手動複製', ok ? 'ok' : 'bad')
   }
 }
-const cloudMax = computed(() => Math.max(...(results.value?.words?.map((w: any) => w.count) || [1]), 1))
+const cloudMax = computed(() => Math.max(...(openRes.value?.words.map((w) => w.count) || [1]), 1))
 const barMax = computed(() => Math.max(results.value?.total || 1, 1))
 /** 測驗題等公布才顯示票數，投票類則即時顯示 */
 const showCounts = computed(() => revealed.value || !slide.value?.graded)
@@ -826,7 +847,7 @@ const showCounts = computed(() => revealed.value || !slide.value?.graded)
 
           <template v-else>
             <div class="q-meta">
-              <span class="tag"><AppIcon :name="TYPE_META[slide.type]?.icon" :size="12" /> {{ TYPE_META[slide.type]?.label }}</span>
+              <span class="tag"><AppIcon :name="TYPE_META[slide.type]?.icon || 'info'" :size="12" /> {{ TYPE_META[slide.type]?.label }}</span>
               <span>第 {{ view.index + 1 }} / {{ view.total }} 題</span>
               <span v-if="slide.points === 'double'" class="tag">雙倍分數</span>
               <span v-if="slide.points === 'none'" class="tag">不計分</span>
@@ -889,19 +910,19 @@ const showCounts = computed(() => revealed.value || !slide.value?.graded)
                 </div>
                 <div v-if="revealed" class="soup-answer">
                   <span class="lbl">正確答案</span>
-                  <b>{{ (view.solution?.accepted || []).join(' / ') }}</b>
+                  <b>{{ (view.solution && 'accepted' in view.solution ? view.solution.accepted : []).join(' / ') }}</b>
                 </div>
               </div>
               <div v-if="revealed" class="soup-results">
                 <div class="p-answers">
-                  <div v-for="row in results.rows" :key="row.text" class="p-answer" :class="{ ok: row.correct }">
+                  <div v-for="row in answerRes?.rows || []" :key="row.text" class="p-answer" :class="{ ok: row.correct }">
                     <AppIcon v-if="row.correct" name="check" :size="16" />
                     <span>{{ row.text }}</span>
                     <span class="n">{{ row.count }} 人</span>
                   </div>
                 </div>
-                <div class="q-body">{{ results.correctCount }}/{{ results.total }} 人猜中</div>
-                <PeopleAnswers :people="results.people" />
+                <div class="q-body">{{ answerRes?.correctCount }}/{{ answerRes?.total }} 人猜中</div>
+                <PeopleAnswers :people="answerRes?.people" />
               </div>
             </div>
 
@@ -940,14 +961,14 @@ const showCounts = computed(() => revealed.value || !slide.value?.graded)
               </div>
               <div class="reveal-opts">
                 <div
-                  v-for="(b, i) in results.bars"
+                  v-for="(b, i) in barRes?.bars || []"
                   :key="b.id"
                   class="p-opt compact"
                   :class="revealed && slide.graded ? (b.correct ? 'win' : 'dim') : ''"
                   :style="{ '--oc': b.color }"
                 >
                   <i v-if="revealed" class="fill" :style="{ width: pct(b.count, barMax) + '%' }" />
-                  <AppIcon :name="OPTION_SHAPES[i % OPTION_SHAPES.length]" :size="16" class="shape" />
+                  <AppIcon :name="OPTION_SHAPES[i % OPTION_SHAPES.length] || 'circle'" :size="16" class="shape" />
                   <span class="tx">{{ b.text }}</span>
                   <span v-if="revealed" class="cnt"><b>{{ b.count }}</b></span>
                 </div>
@@ -1006,20 +1027,20 @@ const showCounts = computed(() => revealed.value || !slide.value?.graded)
                 </div>
 
                 <!-- 選擇題 -->
-                <div v-if="CHOICE_TYPES.includes(slide.type)" class="p-opts" :class="{ one: slide.options.length <= 2 }">
+                <div v-if="isChoiceSlide(slide)" class="p-opts" :class="{ one: slide.options.length <= 2 }">
                   <div
-                    v-for="(b, i) in results.bars"
+                    v-for="(b, i) in barRes?.bars || []"
                     :key="b.id"
                     class="p-opt"
                     :class="revealed && slide.graded ? (b.correct ? 'win' : 'dim') : ''"
                     :style="{ '--oc': b.color }"
                   >
                     <i v-if="showCounts" class="fill" :style="{ width: pct(b.count, barMax) + '%' }" />
-                    <img v-if="b.image" :src="b.image" alt="" class="p-opt-img" />
-                    <AppIcon :name="OPTION_SHAPES[i % OPTION_SHAPES.length]" :size="20" class="shape" />
+                    <img v-if="b.image" :src="b.image || ''" alt="" class="p-opt-img" />
+                    <AppIcon :name="OPTION_SHAPES[i % OPTION_SHAPES.length] || 'circle'" :size="20" class="shape" />
                     <span class="tx">{{ b.text }}</span>
                     <span v-if="showCounts" class="cnt">
-                      <b>{{ b.count }}</b><span class="pc">{{ pct(b.count, results.total) }}%</span>
+                      <b>{{ b.count }}</b><span class="pc">{{ pct(b.count, barRes?.total || 0) }}%</span>
                     </span>
                     <AppIcon v-if="revealed && slide.graded && b.correct" name="check" :size="20" class="mark" />
                   </div>
@@ -1033,8 +1054,8 @@ const showCounts = computed(() => revealed.value || !slide.value?.graded)
                   :style="{ '--pih': pairLayout.imgH + 'px' }"
                 >
                   <template v-if="revealed">
-                    <div v-for="row in results.rows" :key="row.id" class="p-row">
-                      <i class="bar" :style="{ width: pct(row.count, results.total) + '%' }" />
+                    <div v-for="row in pairRes?.rows || []" :key="row.id" class="p-row">
+                      <i class="bar" :style="{ width: pct(row.count, pairRes?.total || 0) + '%' }" />
                       <span class="cell">
                         <img v-if="row.leftImage" :src="row.leftImage" class="pimg" alt="" />
                         <span v-if="row.left">{{ row.left }}</span>
@@ -1044,7 +1065,7 @@ const showCounts = computed(() => revealed.value || !slide.value?.graded)
                         <img v-if="row.rightImage" :src="row.rightImage" class="pimg" alt="" />
                         <span v-if="row.right">{{ row.right }}</span>
                       </span>
-                      <span class="hit">{{ row.count }}/{{ results.total }} 答對</span>
+                      <span class="hit">{{ row.count }}/{{ pairRes?.total }} 答對</span>
                     </div>
                   </template>
                   <template v-else>
@@ -1069,20 +1090,27 @@ const showCounts = computed(() => revealed.value || !slide.value?.graded)
                     </span>
                   </div>
                   <div class="cat-cols">
-                    <div v-for="(c, ci) in (revealed ? results.cols : slide.categories)" :key="c.id" class="cat-col" :style="{ '--cc': CAT_COLORS[ci % CAT_COLORS.length] }">
-                      <div class="cat-col-name">{{ c.name }}</div>
-                      <div class="cat-col-body">
-                        <template v-if="revealed">
+                    <template v-if="revealed">
+                      <div v-for="(c, ci) in catRes?.cols || []" :key="c.id" class="cat-col" :style="{ '--cc': CAT_COLORS[ci % CAT_COLORS.length] }">
+                        <div class="cat-col-name">{{ c.name }}</div>
+                        <div class="cat-col-body">
                           <div v-for="it in c.items" :key="it.id" class="cat-chip" :class="{ 'has-img': !!it.image }">
-                            <i class="bar" :style="{ width: pct(it.count, results.total) + '%' }" />
+                            <i class="bar" :style="{ width: pct(it.count, catRes?.total || 0) + '%' }" />
                             <img v-if="it.image" :src="it.image" class="cimg" alt="" />
                             <span v-if="it.text">{{ it.text }}</span>
-                            <b>{{ it.count }}/{{ results.total }}</b>
+                            <b>{{ it.count }}/{{ catRes?.total }}</b>
                           </div>
-                        </template>
-                        <span v-else class="cat-col-hint">？</span>
+                        </div>
                       </div>
-                    </div>
+                    </template>
+                    <template v-else>
+                      <div v-for="(c, ci) in slide.categories" :key="c.id" class="cat-col" :style="{ '--cc': CAT_COLORS[ci % CAT_COLORS.length] }">
+                        <div class="cat-col-name">{{ c.name }}</div>
+                        <div class="cat-col-body">
+                          <span class="cat-col-hint">？</span>
+                        </div>
+                      </div>
+                    </template>
                   </div>
                 </div>
 
@@ -1094,14 +1122,14 @@ const showCounts = computed(() => revealed.value || !slide.value?.graded)
                   :style="{ '--pih': orderLayout.imgH + 'px' }"
                 >
                   <template v-if="revealed">
-                    <div v-for="row in results.rows" :key="row.id" class="p-row">
-                      <i class="bar" :style="{ width: pct(row.count, results.total) + '%' }" />
+                    <div v-for="row in orderRes?.rows || []" :key="row.id" class="p-row">
+                      <i class="bar" :style="{ width: pct(row.count, orderRes?.total || 0) + '%' }" />
                       <span class="n">{{ row.position }}</span>
                       <span class="cell right">
                         <img v-if="row.image" :src="row.image" class="pimg" alt="" />
                         <span v-if="row.text">{{ row.text }}</span>
                       </span>
-                      <span class="hit">{{ row.count }}/{{ results.total }} 放對</span>
+                      <span class="hit">{{ row.count }}/{{ orderRes?.total }} 放對</span>
                     </div>
                   </template>
                   <template v-else>
@@ -1122,17 +1150,17 @@ const showCounts = computed(() => revealed.value || !slide.value?.graded)
                   </div>
                   <template v-else>
                     <div class="p-answers">
-                      <div v-for="row in results.rows" :key="row.text" class="p-answer" :class="{ ok: row.correct }">
-                        <i class="bar" :style="{ width: pct(row.count, results.total) + '%' }" />
+                      <div v-for="row in answerRes?.rows || []" :key="row.text" class="p-answer" :class="{ ok: row.correct }">
+                        <i class="bar" :style="{ width: pct(row.count, answerRes?.total || 0) + '%' }" />
                         <AppIcon v-if="row.correct" name="check" :size="16" />
                         <span>{{ row.text }}</span>
                         <span class="n">{{ row.count }} 人</span>
                       </div>
                     </div>
                     <div class="q-body">
-                      正確答案：{{ (view.solution?.accepted || []).join(' / ') }}　·　{{ results.correctCount }}/{{ results.total }} 人答對
+                      正確答案：{{ (view.solution && 'accepted' in view.solution ? view.solution.accepted : []).join(' / ') }}　·　{{ answerRes?.correctCount }}/{{ answerRes?.total }} 人答對
                     </div>
-                    <PeopleAnswers :people="results.people" />
+                    <PeopleAnswers :people="answerRes?.people" />
                   </template>
                 </template>
 
@@ -1143,17 +1171,17 @@ const showCounts = computed(() => revealed.value || !slide.value?.graded)
                   </div>
                   <template v-else>
                     <div class="p-answers">
-                      <div v-for="(row, i) in results.rows" :key="i" class="p-answer ok">
-                        <i class="bar" :style="{ width: pct(row.count, results.total) + '%' }" />
+                      <div v-for="(row, i) in listRes?.rows || []" :key="i" class="p-answer ok">
+                        <i class="bar" :style="{ width: pct(row.count, listRes?.total || 0) + '%' }" />
                         <AppIcon name="check" :size="16" />
                         <span>{{ row.text }}</span>
                         <span class="n">{{ row.count }} 人答到</span>
                       </div>
                     </div>
                     <div class="q-body">
-                      共 {{ results.groupTotal }} 個答案　·　{{ results.perfect }}/{{ results.total }} 人全部答出
+                      共 {{ listRes?.groupTotal }} 個答案　·　{{ listRes?.perfect }}/{{ listRes?.total }} 人全部答出
                     </div>
-                    <PeopleAnswers :people="results.people" list />
+                    <PeopleAnswers :people="listRes?.people" list />
                   </template>
                 </template>
 
@@ -1162,59 +1190,60 @@ const showCounts = computed(() => revealed.value || !slide.value?.graded)
                   <div v-if="!revealed" class="q-body center-text big">
                     {{ view.answeredCount ? `已有 ${view.answeredCount} 人送出答案` : '參與者正在輸入數字…' }}
                   </div>
-                  <template v-else>
+                  <template v-else-if="numberRes">
                     <div class="num-answer">
                       <span class="lbl">正確答案</span>
-                      <b>{{ results.answer.toLocaleString() }}{{ results.unit }}</b>
+                      <b>{{ numberRes.answer.toLocaleString() }}{{ numberRes.unit }}</b>
                     </div>
                     <div class="num-stats">
-                      <div class="ns"><b>{{ results.exact }}</b><span>剛好猜中</span></div>
-                      <div class="ns"><b>{{ results.avg !== null ? Math.round(results.avg).toLocaleString() : '—' }}</b><span>平均猜測</span></div>
-                      <div class="ns"><b>{{ results.min !== null ? results.min.toLocaleString() : '—' }}</b><span>最小</span></div>
-                      <div class="ns"><b>{{ results.max !== null ? results.max.toLocaleString() : '—' }}</b><span>最大</span></div>
+                      <div class="ns"><b>{{ numberRes.exact }}</b><span>剛好猜中</span></div>
+                      <div class="ns"><b>{{ numberRes.avg !== null ? Math.round(numberRes.avg).toLocaleString() : '—' }}</b><span>平均猜測</span></div>
+                      <div class="ns"><b>{{ numberRes.min !== null ? numberRes.min.toLocaleString() : '—' }}</b><span>最小</span></div>
+                      <div class="ns"><b>{{ numberRes.max !== null ? numberRes.max.toLocaleString() : '—' }}</b><span>最大</span></div>
                     </div>
-                    <div v-if="results.closest.length" class="p-answers" style="margin-top: 14px">
-                      <div v-for="(c, i) in results.closest" :key="i" class="p-answer" :class="{ ok: c.diff === 0 }">
+                    <div v-if="numberRes.closest.length" class="p-answers" style="margin-top: 14px">
+                      <div v-for="(c, i) in numberRes.closest" :key="i" class="p-answer" :class="{ ok: c.diff === 0 }">
                         <span class="rank-badge" :class="'r' + (i + 1)">{{ i + 1 }}</span>
                         <span>{{ c.name }}</span>
-                        <span class="n">{{ c.value.toLocaleString() }}{{ results.unit }}（差 {{ c.diff.toLocaleString() }}）</span>
+                        <span class="n">{{ c.value.toLocaleString() }}{{ numberRes.unit }}（差 {{ c.diff.toLocaleString() }}）</span>
                       </div>
                     </div>
-                    <PeopleAnswers :people="results.people" />
+                    <PeopleAnswers :people="numberRes.people" />
                   </template>
                 </template>
 
                 <!-- 評分題 -->
-                <template v-else-if="slide.type === 'scale'">
+                <template v-else-if="slide.type === 'scale' && scaleRes">
                   <div class="scale-chart">
-                    <div v-for="b in results.buckets" :key="b.value" class="sbar">
+                    <div v-for="b in scaleRes.buckets" :key="b.value" class="sbar">
                       <div class="sbar-track">
-                        <i :style="{ height: (results.total ? (b.count / Math.max(...results.buckets.map((x: any) => x.count), 1)) * 100 : 0) + '%' }" />
+                        <i :style="{ height: (scaleRes.total ? (b.count / Math.max(...scaleRes.buckets.map((x) => x.count), 1)) * 100 : 0) + '%' }" />
                       </div>
                       <div class="sbar-n">{{ b.count }}</div>
                       <div class="sbar-v">{{ b.value }}</div>
                     </div>
                   </div>
                   <div class="scale-foot">
-                    <span>{{ results.minLabel }}</span>
-                    <b v-if="results.avg !== null">平均 {{ results.avg.toFixed(2) }} 分</b>
+                    <span>{{ scaleRes.minLabel }}</span>
+                    <b v-if="scaleRes.avg !== null">平均 {{ scaleRes.avg.toFixed(2) }} 分</b>
                     <b v-else>還沒有人評分</b>
-                    <span>{{ results.maxLabel }}</span>
+                    <span>{{ scaleRes.maxLabel }}</span>
                   </div>
                 </template>
 
                 <!-- 開放問題 -->
                 <template v-else-if="slide.type === 'open'">
-                  <div v-if="!results.total" class="q-body center-text">等待參與者回覆…</div>
-                  <div v-else-if="results.display === 'list'" class="p-replies">
-                    <div v-for="(t, i) in results.texts.slice(-24).reverse()" :key="i" class="p-reply">
+                  <div v-if="!openRes" class="q-body center-text">等待參與者回覆…</div>
+                  <div v-else-if="!openRes.total" class="q-body center-text">等待參與者回覆…</div>
+                  <div v-else-if="openRes.display === 'list'" class="p-replies">
+                    <div v-for="(t, i) in openRes.texts.slice(-24).reverse()" :key="i" class="p-reply">
                       <div class="who">{{ t.name }}</div>
                       <div class="txt">{{ t.text }}</div>
                     </div>
                   </div>
                   <div v-else class="p-cloud">
                     <span
-                      v-for="(w, i) in results.words"
+                      v-for="(w, i) in openRes.words"
                       :key="w.text"
                       :style="{
                         fontSize: 20 + Math.round((w.count / cloudMax) * 58) + 'px',

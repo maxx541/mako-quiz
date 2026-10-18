@@ -1,5 +1,5 @@
 import { unzipSync } from 'fflate'
-import { SLIDE_TYPES } from './quiz'
+import { isSlideType } from './quiz'
 
 /**
  * 伺服器端的 bundle 檢查。
@@ -68,7 +68,7 @@ export function readBundleMeta(data: Uint8Array): BundleMeta {
   const key = Object.keys(files).find((k) => k.split('/').pop()?.toLowerCase() === 'presentation.json')
   if (!key) throw new BundleError('zip 裡找不到 presentation.json')
 
-  let pres: any
+  let pres: { title?: unknown; description?: unknown; cover?: unknown; slides?: { type?: unknown; image?: unknown }[] }
   try {
     pres = JSON.parse(new TextDecoder().decode(files[key]))
   } catch {
@@ -84,7 +84,7 @@ export function readBundleMeta(data: Uint8Array): BundleMeta {
   for (const s of slides) {
     const t = String(s?.type || '')
     // 不認得的題型直接擋 —— 下載回去也是壞的
-    if (!SLIDE_TYPES[t]) throw new BundleError(`不支援的題型：${t || '(空白)'}`)
+    if (!isSlideType(t)) throw new BundleError(`不支援的題型：${t || '(空白)'}`)
     typeCounts[t] = (typeCounts[t] || 0) + 1
   }
 
@@ -107,8 +107,12 @@ export function readBundleMeta(data: Uint8Array): BundleMeta {
  * 規則要跟 store.ts 的 coverOf() 一致。自動挑的時候只看 slide.image ——
  * 解說圖常常直接畫著答案，拿它當封面等於在市集列表上爆雷。
  */
-function findCover(pres: any, slides: any[], files: Record<string, Uint8Array>): BundleMeta['cover'] {
-  for (const ref of [pres?.cover, ...slides.map((s: any) => s?.image)]) {
+function findCover(
+  pres: { cover?: unknown },
+  slides: { image?: unknown }[],
+  files: Record<string, Uint8Array>
+): BundleMeta['cover'] {
+  for (const ref of [pres?.cover, ...slides.map((s) => s?.image)]) {
     if (!ref || typeof ref !== 'string') continue
 
     // 外部網址不在包裡，直接把網址帶著走
@@ -118,8 +122,10 @@ function findCover(pres: any, slides: any[], files: Record<string, Uint8Array>):
     const want = ref.split(/[\\/]/).pop()?.toLowerCase()
     const hit = Object.keys(files).find((k) => k.split('/').pop()?.toLowerCase() === want)
     if (!hit) continue
-    const ext = imageExt(files[hit])
-    if (ext) return { bytes: files[hit], ext }
+    const bytes = files[hit]
+    if (!bytes) continue
+    const ext = imageExt(bytes)
+    if (ext) return { bytes, ext }
   }
   return null
 }

@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
+import type { Presentation, PresentationInput, PresentationSummary, Slide } from '#shared/types/quiz'
 
 /*
  * 測試會改動簡報設定，所以要能指到別的目錄，絕對不能碰到使用者真正的資料。
@@ -19,7 +20,7 @@ export const UPLOAD_DIR = path.join(DATA_DIR, 'uploads')
  */
 export const SOUND_DIR = path.join(DATA_DIR, 'sounds')
 
-let cache: Map<string, any> | null = null
+let cache: Map<string, Presentation> | null = null
 
 export function uid(prefix = '') {
   return prefix + crypto.randomBytes(8).toString('hex')
@@ -33,12 +34,12 @@ function load() {
   ensureSoundDir()
   if (fs.existsSync(FILE)) {
     try {
-      const raw = JSON.parse(fs.readFileSync(FILE, 'utf8'))
+      const raw = JSON.parse(fs.readFileSync(FILE, 'utf8')) as { id: string; slides?: Record<string, any>[] }[]
       // 舊版匯入沒有補 id、也沒有新版的欄位，開機時順手修好，使用者不用重匯
       let repaired = 0
       for (const p of raw) {
         for (const s of p.slides || []) if (normalizeSlide(s)) repaired++
-        cache.set(p.id, p)
+        cache.set(p.id, p as Presentation)
       }
       if (repaired) {
         console.log(`[store] 修好了 ${repaired} 張舊資料的投影片（補上缺少的 id 與欄位）`)
@@ -69,13 +70,13 @@ function persist() {
  * 自動抓的時候只看 slide.image —— 選項圖和解說圖不拿來當封面：
  * 解說圖常常直接畫著答案，拿它當封面等於在列表上爆雷。
  */
-export function coverOf(p: any): string | null {
+export function coverOf(p: Pick<Presentation, 'cover' | 'slides'> | null | undefined): string | null {
   if (p?.cover) return p.cover
   for (const s of p?.slides || []) if (s?.image) return s.image
   return null
 }
 
-export function listPresentations() {
+export function listPresentations(): PresentationSummary[] {
   return [...load().values()]
     .map((p) => ({
       id: p.id,
@@ -106,7 +107,7 @@ export const DEFAULT_BACKGROUND = {
   auto: true,
 }
 
-export function createPresentation(data: any = {}) {
+export function createPresentation(data: PresentationInput = {}): Presentation {
   const now = Date.now()
   const p = {
     id: uid('p_'),
@@ -147,7 +148,7 @@ export function createPresentation(data: any = {}) {
   return p
 }
 
-export function updatePresentation(id: string, patch: any) {
+export function updatePresentation(id: string, patch: Partial<Presentation>) {
   const p = load().get(id)
   if (!p) return null
   /*
@@ -173,11 +174,11 @@ export function deletePresentation(id: string) {
 export function duplicatePresentation(id: string) {
   const p = load().get(id)
   if (!p) return null
-  const copy = JSON.parse(JSON.stringify(p))
+  const copy = JSON.parse(JSON.stringify(p)) as Presentation
   copy.id = uid('p_')
   copy.title = p.title + '（複本）'
   copy.createdAt = copy.updatedAt = Date.now()
-  copy.slides = copy.slides.map((s: any) => ({ ...s, id: uid('s_') }))
+  copy.slides = copy.slides.map((s) => ({ ...s, id: uid('s_') }))
   load().set(copy.id, copy)
   persist()
   return copy
@@ -194,7 +195,7 @@ export function duplicatePresentation(id: string) {
  *
  * @returns 有沒有動過（用來判斷舊資料要不要寫回檔案）
  */
-export function normalizeSlide(s: any): boolean {
+export function normalizeSlide(s: Record<string, any>): boolean {
   let changed = false
 
   // 解說：舊資料沒有這個欄位，編輯器讀 slide.explain.text 會炸，要補。
@@ -219,7 +220,7 @@ export function normalizeSlide(s: any): boolean {
    * 重複跟沒有一樣糟 —— 統計會把兩個項目算成同一個，前端的 :key 也會撞。
    * @returns 舊 id → 新 id 的對照（給 categoryId 換用）
    */
-  const fixIds = (list: any[], prefix: string) => {
+  const fixIds = (list: Record<string, any>[], prefix: string) => {
     const remap = new Map<string, string>()
     const used = new Set<string>()
     for (const x of list) {
@@ -251,7 +252,7 @@ export function normalizeSlide(s: any): boolean {
           changed = true
         }
         // 對不到任何分類就掛到第一個，免得變成孤兒（畫面上永遠拿不到分）
-        if (!s.categories.some((c: any) => c.id === i.categoryId)) {
+        if (!s.categories.some((c: Record<string, any>) => c.id === i.categoryId)) {
           i.categoryId = s.categories[0]?.id
           changed = true
         }
@@ -267,15 +268,17 @@ export function normalizeSlide(s: any): boolean {
   return changed
 }
 
-export function importPresentation(raw: any) {
-  const data = typeof raw === 'string' ? JSON.parse(raw) : raw
+export function importPresentation(raw: unknown) {
+  const data = (typeof raw === 'string' ? JSON.parse(raw) : raw) as PresentationInput & {
+    slides?: Record<string, any>[]
+  }
   if (!data || !Array.isArray(data.slides)) throw new Error('格式不正確：缺少 slides 陣列')
-  const slides = data.slides.map((s: any) => {
+  const slides = data.slides.map((s) => {
     // 匯入的題目常常只有 text / correct，缺的欄位用該題型的預設值補齊
-    const copy = JSON.parse(JSON.stringify(s))
+    const copy = JSON.parse(JSON.stringify(s)) as Record<string, any>
     copy.id = uid('s_')
     normalizeSlide(copy)
-    return copy
+    return copy as Slide
   })
   return createPresentation({
     title: data.title || '匯入的簡報',
