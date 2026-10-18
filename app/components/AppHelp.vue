@@ -7,15 +7,15 @@
  * 想知道的人自己看，不想看的人不會被一堆灰字擋住。
  */
 const open = ref(false)
-const tab = ref('start')
-
 const TABS = [
   ['start', '開始'],
   ['make', '出題'],
   ['play', '播放'],
   ['gallery', '題庫市集'],
   ['io', '匯入匯出'],
-]
+] as const
+
+const tab = ref<(typeof TABS)[number][0]>('start')
 
 function onKey(e: KeyboardEvent) {
   if (e.key === 'Escape' && open.value) open.value = false
@@ -145,11 +145,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
             <h3>大螢幕的操作</h3>
             <table class="kv">
-              <tr><td><code>空白</code> / <code>→</code></td><td>下一步（開始 → 公布答案 → 排行榜 → 下一題）</td></tr>
-              <tr><td><code>←</code></td><td>上一步</td></tr>
-              <tr><td><code>F</code></td><td>全螢幕</td></tr>
-              <tr><td><code>Q</code></td><td>提問面板</td></tr>
-              <tr><td>下方小圓點</td><td>跳到任一題</td></tr>
+              <tbody>
+                <tr><td><code>空白</code> / <code>→</code></td><td>下一步（開始 → 公布答案 → 排行榜 → 下一題）</td></tr>
+                <tr><td><code>←</code></td><td>上一步</td></tr>
+                <tr><td><code>F</code></td><td>全螢幕</td></tr>
+                <tr><td><code>Q</code></td><td>提問面板</td></tr>
+                <tr><td>下方小圓點</td><td>跳到任一題</td></tr>
+              </tbody>
             </table>
 
             <h3>按鈕音效</h3>

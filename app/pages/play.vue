@@ -1,15 +1,18 @@
 <script setup lang="ts">
+import type { AnswerValue, PlayerOption, PlayerView, Reaction } from '#shared/types/quiz'
+import { aggregateKind, isChoiceSlide } from '~/utils/slideGuard'
+
 useHead({ title: '作答中 · Makoquiz' })
 
 const route = useRoute()
 const code = String(route.query.c || '')
 const wantName = String(route.query.n || '')
 
-const view = ref<any>(null)
+const view = ref<PlayerView | null>(null)
 const dead = ref('')
 const sheetOpen = ref(false)
 const seenQa = ref(0)
-const draft = ref<any>(null)
+const draft = ref<Record<string, string> | string[] | null>(null)
 const draftSlide = ref<string | null>(null)
 
 /**
@@ -58,11 +61,12 @@ onMounted(() => {
   if (!/^\d{6}$/.test(code)) return navigateTo('/')
 
   socket.on('connect', () => {
-    socket.emit('player:join', { code, name: wantName || localStorage.getItem('ql_name') || '玩家', token: identity.get() }, (res: any) => {
+    socket.emit('player:join', { code, name: wantName || localStorage.getItem('ql_name') || '玩家', token: identity.get() }, (res: { error?: string; token?: string; name?: string; resumed?: boolean; view?: PlayerView } | undefined) => {
       if (!res || res.error) {
         identity.clear()
         return fatal(res?.error || '無法加入房間')
       }
+      if (!res.token || !res.name || !res.view) return fatal('無法加入房間')
       identity.set(res.token)
       localStorage.setItem('ql_name', res.name)
       if (res.resumed && joined) toast('已重新連線，分數都還在', 'ok')
@@ -72,7 +76,7 @@ onMounted(() => {
   })
 
   socket.on('player:sync', apply)
-  socket.on('session:closed', ({ reason }: any) => fatal(reason || '場次已結束'))
+  socket.on('session:closed', ({ reason }: { reason?: string }) => fatal(reason || '場次已結束'))
   socket.on('disconnect', () => {
     if (!dead.value) toast('連線中斷，重新連線中…', 'bad')
   })
@@ -84,7 +88,7 @@ function fatal(msg: string) {
   identity.clear() // 這一場結束了，session 身分跟著失效
 }
 
-function apply(v: any) {
+function apply(v: PlayerView) {
   if (dead.value) return
   view.value = v
   // 換頁時清掉還沒送出的暫存
@@ -125,8 +129,9 @@ const answerHint = computed(() => {
   }
 })
 
-function send(value: any, then?: () => void) {
-  socket.emit('player:answer', { slideId: slide.value.id, value }, (res: any) => {
+function send(value: AnswerValue, then?: () => void) {
+  if (!slide.value) return
+  socket.emit('player:answer', { slideId: slide.value.id, value }, (res: { error?: string } | undefined) => {
     if (res?.error) return toast(res.error, 'bad')
     navigator.vibrate?.(24)
     then?.()
@@ -147,7 +152,8 @@ const slideId = computed(() => slide.value?.id ?? null)
 const picked = ref<Set<string>>(new Set())
 watch(slideId, () => (picked.value = new Set()))
 
-function tapOption(o: any) {
+function tapOption(o: PlayerOption) {
+  if (!slide.value || !('options' in slide.value)) return
   if (slide.value.type === 'multi') {
     picked.value.has(o.id) ? picked.value.delete(o.id) : picked.value.add(o.id)
     triggerRef(picked)
@@ -160,19 +166,27 @@ function tapOption(o: any) {
 
 const activeLeft = ref<string | null>(null)
 const pairs = computed<Record<string, string>>(() => {
-  if (!draft.value || slide.value?.type !== 'match') draft.value = {}
+  if (!draft.value || Array.isArray(draft.value) || slide.value?.type !== 'match') draft.value = {}
   return draft.value
 })
 const rightOwner = (rightId: string) => Object.keys(pairs.value).find((k) => pairs.value[k] === rightId) || null
-const leftIndex = (leftId: string) => slide.value.lefts.findIndex((l: any) => l.id === leftId)
-const matchDone = computed(() => slide.value?.lefts && Object.keys(pairs.value).length === slide.value.lefts.length)
+const leftIndex = (leftId: string) => {
+  const s = slide.value
+  if (!s || s.type !== 'match') return -1
+  return s.lefts.findIndex((l) => l.id === leftId)
+}
+const matchDone = computed(() => {
+  const s = slide.value
+  return !!s && s.type === 'match' && Object.keys(pairs.value).length === s.lefts.length
+})
 
 /**
  * 配對圖在手機上很吃高度：兩欄各 N 格，每格再塞一張圖，
  * 8 組就是 16 張。組數越多每張就得越小，不然整頁都在捲、看不到全貌。
  */
 const matchImgH = computed(() => {
-  const n = slide.value?.lefts?.length || 0
+  const s = slide.value
+  const n = s?.type === 'match' ? s.lefts.length : 0
   return n <= 3 ? 104 : n <= 5 ? 82 : 64
 })
 
@@ -195,7 +209,7 @@ function tapRight(id: string) {
   }
   if (!activeLeft.value) return toast('請先點選左邊的項目')
   pairs.value[activeLeft.value] = id
-  activeLeft.value = slide.value.lefts.find((l: any) => !pairs.value[l.id])?.id ?? null
+  activeLeft.value = (slide.value?.type === 'match' ? slide.value.lefts : []).find((l) => !pairs.value[l.id])?.id ?? null
   triggerRef(draft)
 }
 
@@ -203,7 +217,7 @@ function tapRight(id: string) {
 
 const catMap = computed<Record<string, string>>({
   get: () => {
-    if (!draft.value || slide.value?.type !== 'categorize') draft.value = {}
+    if (!draft.value || Array.isArray(draft.value) || slide.value?.type !== 'categorize') draft.value = {}
     return draft.value
   },
   set: (v) => {
@@ -211,7 +225,10 @@ const catMap = computed<Record<string, string>>({
   },
 })
 const catDone = computed(
-  () => slide.value?.items && slide.value.items.every((i: any) => catMap.value[i.id])
+  () => {
+    const s = slide.value
+    return !!s && 'items' in s && s.items.every((i) => catMap.value[i.id])
+  }
 )
 
 /* ---------------- 順序題 ---------------- */
@@ -221,23 +238,31 @@ const catDone = computed(
  * 項目本身留在原位不動 —— 會跳動的清單在手機上很難點。
  */
 const orderPicks = computed<string[]>(() => {
-  if (!draft.value || slide.value?.type !== 'order') draft.value = []
+  if (!draft.value || !Array.isArray(draft.value) || slide.value?.type !== 'order') draft.value = []
   return draft.value
 })
 
 /** 這個項目排第幾（0 = 還沒點） */
 const orderRank = (id: string) => orderPicks.value.indexOf(id) + 1
-const orderLeft = computed(() => (slide.value?.items.length || 0) - orderPicks.value.length)
-const orderDone = computed(() => slide.value?.items?.length > 0 && orderLeft.value === 0)
+const orderLeft = computed(() => {
+  const s = slide.value
+  const n = s?.type === 'order' ? s.items.length : 0
+  return n - orderPicks.value.length
+})
+const orderDone = computed(() => {
+  const s = slide.value
+  return s?.type === 'order' && s.items.length > 0 && orderLeft.value === 0
+})
 
 /** 項目多的時候圖要小一點，不然一頁只看得到兩三個、要一直捲才排得出順序 */
 const orderImgH = computed(() => {
-  const n = slide.value?.items?.length || 0
+  const s = slide.value
+  const n = s?.type === 'order' ? s.items.length : 0
   return n <= 4 ? 92 : n <= 6 ? 72 : 58
 })
 
 /** 純圖片的項目沒有文字可以念，至少給個「第幾個」 */
-const orderLabel = (it: any, i: number) => {
+const orderLabel = (it: { id: string; text: string }, i: number) => {
   const name = it.text || `第 ${i + 1} 個項目`
   return orderRank(it.id) ? `${name}，第 ${orderRank(it.id)} 個，再點一次取消` : name
 }
@@ -269,8 +294,15 @@ watch(slideId, () => {
 /* ---------------- 複數答案 ---------------- */
 
 /** 我已經送出的答案清單（複數答案題一個一個累積） */
-const myList = computed<string[]>(() => view.value?.myAnswer?.value || [])
-const listLeft = computed(() => Math.max(0, (slide.value?.maxSubmissions || 10) - myList.value.length))
+const myList = computed(() => {
+  const v = view.value?.myAnswer?.value
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+})
+const listLeft = computed(() => {
+  const s = slide.value
+  const max = s?.type === 'list' ? s.maxSubmissions : 10
+  return Math.max(0, max - myList.value.length)
+})
 
 /**
  * 只擋空白。
@@ -342,11 +374,11 @@ async function pickAvatar(e: Event) {
 /* ---------------- 表情符號 ---------------- */
 
 const reactionsOpen = ref(false)
-const reactionLayer = ref<any>(null)
+const reactionLayer = ref(null)
 const canReact = computed(() => view.value?.settings.reactionsEnabled && (view.value?.reactions?.length || 0) > 0)
 
-function sendReaction(r: any) {
-  socket.emit('player:reaction', { id: r.id }, (res: any) => {
+function sendReaction(r: Reaction) {
+  socket.emit('player:reaction', { id: r.id }, (res: { error?: string } | undefined) => {
     // 節流被擋下是正常的，不用吵使用者
     if (res?.error && !/慢一點/.test(res.error)) toast(res.error, 'bad')
   })
@@ -354,12 +386,19 @@ function sendReaction(r: any) {
 }
 const scaleRange = computed(() => {
   const s = slide.value
-  if (!s) return []
+  if (!s || s.type !== 'scale') return []
   return Array.from({ length: (s.max || 5) - (s.min || 1) + 1 }, (_, i) => (s.min || 1) + i)
 })
 
-const myOpen = computed<string[]>(() => view.value?.myAnswer?.value || [])
-const openLeft = computed(() => Math.max(0, (slide.value?.maxSubmissions || 1) - myOpen.value.length))
+const myOpen = computed(() => {
+  const v = view.value?.myAnswer?.value
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+})
+const openLeft = computed(() => {
+  const s = slide.value
+  const max = s?.type === 'open' ? s.maxSubmissions : 1
+  return Math.max(0, max - myOpen.value.length)
+})
 
 /**
  * 海龜湯每出一條新提示就能再猜一次。
@@ -388,7 +427,7 @@ const soupState = computed(() => {
 const resultKind = computed(() => {
   const a = view.value?.myAnswer
   if (!a) return 'none'
-  return a.correct ? 'ok' : a.ratio > 0 ? 'mid' : 'no'
+  return a.correct ? 'ok' : (a.ratio ?? 0) > 0 ? 'mid' : 'no'
 })
 
 /** 純圖片的項目在「正確答案」那一行沒有文字可寫，用這個佔位 */
@@ -404,10 +443,13 @@ const solutionText = computed(() => {
     case 'multi':
     case 'reveal':
     case 'music':
-      return sol.optionIds.map((id: string) => s.options.find((o: any) => o.id === id)?.text).filter(Boolean).join('、')
+      if (!('optionIds' in sol) || !('options' in s)) return null
+      return sol.optionIds.map((id) => s.options.find((o) => o.id === id)?.text).filter(Boolean).join('、')
     case 'number':
+      if (!('answer' in sol)) return null
       return `${sol.answer}${sol.unit || ''}`
     case 'soup':
+      if (!('accepted' in sol)) return null
       return sol.accepted.join(' / ')
     /*
      * 配對／分類／順序題的項目可以「只有圖沒有文字」。
@@ -417,17 +459,21 @@ const solutionText = computed(() => {
      * 讓「正確答案」整塊不要出現 —— 大螢幕上本來就看得到圖，手機這裡不需要硬湊。
      */
     case 'match':
-      if (!sol.pairs.some((p: any) => p.left || p.right)) return null
-      return sol.pairs.map((p: any) => `${p.left || IMG_ONLY} → ${p.right || IMG_ONLY}`).join('\n')
+      if (!('pairs' in sol)) return null
+      if (!sol.pairs.some((p) => p.left || p.right)) return null
+      return sol.pairs.map((p) => `${p.left || IMG_ONLY} → ${p.right || IMG_ONLY}`).join('\n')
     case 'categorize':
-      if (!sol.categories.some((c: any) => c.items.some((i: any) => i.text))) return null
+      if (!('categories' in sol)) return null
+      if (!sol.categories.some((c) => c.items.some((i) => i.text))) return null
       return sol.categories
-        .map((c: any) => `${c.name}：${c.items.map((i: any) => i.text || IMG_ONLY).join('、')}`)
+        .map((c) => `${c.name}：${c.items.map((i) => i.text || IMG_ONLY).join('、')}`)
         .join('\n')
     case 'order':
-      if (!sol.items.some((i: any) => i.text)) return null
-      return sol.items.map((i: any, n: number) => `${n + 1}. ${i.text || IMG_ONLY}`).join('\n')
+      if (!('items' in sol)) return null
+      if (!sol.items.some((i) => i.text)) return null
+      return sol.items.map((i, n) => `${n + 1}. ${i.text || IMG_ONLY}`).join('\n')
     case 'type':
+      if (!('accepted' in sol)) return null
       return sol.accepted.join(' / ')
     default:
       return null
@@ -436,9 +482,12 @@ const solutionText = computed(() => {
 
 /* ---------------- 文字雲 ---------------- */
 
-const cloudSource = computed(() => view.value?.liveResults || view.value?.results)
+const cloudSource = computed(() => {
+  const res = view.value?.liveResults || view.value?.results
+  return res?.kind === 'open' ? res : null
+})
 
-function cloudStyle(w: any, i: number, max: number) {
+function cloudStyle(w: { count: number }, i: number, max: number) {
   return {
     fontSize: 13 + Math.round((w.count / max) * 22) + 'px',
     color: OPTION_COLORS[i % OPTION_COLORS.length],
@@ -488,18 +537,18 @@ function toggleSheet() {
       <header class="topbar">
         <div class="me">
           <div class="avatar">
-            <img v-if="me.avatar" :src="me.avatar" alt="" />
-            <template v-else>{{ (me.name || '?').slice(0, 1).toUpperCase() }}</template>
+            <img v-if="view.me.avatar" :src="view.me.avatar" alt="" />
+            <template v-else>{{ (view.me.name || '?').slice(0, 1).toUpperCase() }}</template>
           </div>
           <div>
-            <div class="me-name">{{ me.name }}</div>
+            <div class="me-name">{{ view.me.name }}</div>
             <div class="me-sub">房間 {{ view.code }} · {{ view.playerCount }} 人</div>
           </div>
         </div>
         <div class="spacer" />
         <div class="score-pill">
-          <b>{{ me.score.toLocaleString() }}</b>
-          <span>{{ me.rank ? `第 ${me.rank} 名` : '分數' }}</span>
+          <b>{{ view.me.score.toLocaleString() }}</b>
+          <span>{{ view.me.rank ? `第 ${view.me.rank} 名` : '分數' }}</span>
         </div>
         <button v-if="canReact" class="qa-btn react-toggle" :class="{ on: reactionsOpen }" title="送表情符號" @click="reactionsOpen = !reactionsOpen">
           <AppIcon name="smile" :size="15" />
@@ -514,7 +563,7 @@ function toggleSheet() {
       <Transition name="react-bar">
         <div v-if="canReact && reactionsOpen" class="react-bar">
           <button v-for="r in view.reactions" :key="r.id" class="react-btn" :title="r.label" @click="sendReaction(r)">
-            <img :src="r.url" :alt="r.label" />
+            <img :src="r.url || ''" :alt="r.label" />
           </button>
         </div>
       </Transition>
@@ -527,17 +576,17 @@ function toggleSheet() {
         <!-- 大廳：只有這裡能換頭像，開打之後就別分心了 -->
         <div v-if="view.state === 'lobby'" class="center">
           <button class="avatar-pick" :disabled="avatarBusy" @click="avatarInput?.click()">
-            <img v-if="me.avatar" :src="me.avatar" alt="你的頭像" />
+            <img v-if="view.me.avatar" :src="view.me.avatar" alt="你的頭像" />
             <AppIcon v-else name="gamepad" :size="42" :stroke="1.4" />
             <span class="avatar-edit">
               <AppIcon :name="avatarBusy ? 'hourglass' : 'image'" :size="13" />
             </span>
           </button>
           <input ref="avatarInput" type="file" accept="image/*" hidden @change="pickAvatar" />
-          <h2>你已加入，{{ me.name }}！</h2>
+          <h2>你已加入，{{ view.me.name }}！</h2>
           <p>「{{ view.title }}」即將開始，請看主持人的大螢幕。</p>
           <button class="avatar-hint" :disabled="avatarBusy" @click="avatarInput?.click()">
-            {{ avatarBusy ? '上傳中…' : me.avatar ? '換一張頭像' : '點上面的圓圈設定頭像' }}
+            {{ avatarBusy ? '上傳中…' : view.me.avatar ? '換一張頭像' : '點上面的圓圈設定頭像' }}
           </button>
           <div class="pulse"><i /><i /><i /></div>
           <p class="tiny">目前有 {{ view.playerCount }} 位參與者</p>
@@ -547,14 +596,14 @@ function toggleSheet() {
             <span class="lobby-reacts-cap">送個表情炒熱氣氛</span>
             <div class="lobby-reacts-row">
               <button v-for="r in view.reactions" :key="r.id" class="react-btn" :title="r.label" @click="sendReaction(r)">
-                <img :src="r.url" :alt="r.label" />
+                <img :src="r.url || ''" :alt="r.label" />
               </button>
             </div>
           </div>
         </div>
 
         <!-- 進行中 -->
-        <template v-else-if="view.state === 'live'">
+        <template v-else-if="view.state === 'live' && slide">
           <!-- 內容頁 -->
           <div v-if="slide.type === 'content'" class="center">
             <AppIcon name="monitor" :size="58" :stroke="1.4" />
@@ -665,7 +714,7 @@ function toggleSheet() {
                   <span>{{ h.text }}</span>
                 </li>
               </ol>
-              <template v-if="soupState.canAnswer">
+              <template v-if="soupState?.canAnswer">
                 <div v-if="soupState.why === 'retry'" class="soup-retry">
                   <AppIcon name="info" :size="14" />
                   上一個猜錯了 —— 有新提示了，再試一次！
@@ -688,18 +737,18 @@ function toggleSheet() {
                 </p>
               </template>
 
-              <div v-else-if="soupState.why === 'correct'" class="soup-done ok">
+              <div v-else-if="soupState?.why === 'correct'" class="soup-done ok">
                 <AppIcon name="check" :size="20" />
                 <div>
                   <b>答對了！</b>
-                  <span>你在第 {{ view.myAnswer.stage + 1 }} 條提示就猜中，拿到 {{ view.myAnswer.points.toLocaleString() }} 分</span>
+                  <span>你在第 {{ (view.myAnswer?.stage ?? 0) + 1 }} 條提示就猜中，拿到 {{ (view.myAnswer?.points ?? 0).toLocaleString() }} 分</span>
                 </div>
               </div>
 
               <div v-else class="soup-done wait">
                 <AppIcon name="hourglass" :size="20" />
                 <div>
-                  <b>「{{ view.myAnswer.value }}」不對</b>
+                  <b>「{{ view.myAnswer?.value }}」不對</b>
                   <span>大家都答完這輪就會出下一條提示，到時再猜一次</span>
                 </div>
               </div>
@@ -719,7 +768,7 @@ function toggleSheet() {
             </div>
 
             <!-- 單選 / 複選 / 是非 / 猜圖 / 音樂 -->
-            <div v-if="CHOICE_TYPES.includes(slide.type)">
+            <div v-if="isChoiceSlide(slide)">
               <div class="opts" :class="{ two: slide.options.length === 2 || slide.options.length === 4 }">
                 <button
                   v-for="(o, i) in slide.options"
@@ -731,7 +780,7 @@ function toggleSheet() {
                 >
                   <img v-if="o.image" :src="o.image" alt="" class="opt-img" />
                   <div class="opt-line">
-                    <AppIcon :name="OPTION_SHAPES[i % OPTION_SHAPES.length]" :size="16" class="shape" />
+                    <AppIcon :name="OPTION_SHAPES[i % OPTION_SHAPES.length] || 'circle'" :size="16" class="shape" />
                     <span>{{ o.text || (o.image ? '' : `選項 ${i + 1}`) }}</span>
                     <span v-if="slide.type === 'multi'" class="tick"><AppIcon name="check" :size="12" /></span>
                   </div>
@@ -860,19 +909,19 @@ function toggleSheet() {
                 <span>{{ slide.minLabel }}</span>
                 <span>{{ slide.maxLabel }}</span>
               </div>
-              <button class="submit" :disabled="scaleValue === null" @click="send(scaleValue)">送出</button>
+              <button class="submit" :disabled="scaleValue === null" @click="scaleValue !== null && send(scaleValue)">送出</button>
             </div>
           </div>
         </template>
 
         <!-- 公布答案 -->
-        <div v-else-if="view.state === 'results'" class="center">
+        <div v-else-if="view.state === 'results' && slide" class="center">
           <template v-if="!slide.graded">
             <AppIcon :name="slide.type === 'open' ? 'message-open' : 'bar-chart'" :size="58" :stroke="1.4" />
             <h2>{{ view.myAnswer ? '感謝你的回覆！' : '這題你沒有回覆' }}</h2>
             <p>結果正顯示在主持人的大螢幕上</p>
             <div v-if="slide.type === 'open'" style="width: 100%; max-width: 400px">
-              <CloudView :res="view.results" />
+              <CloudView :res="aggregateKind(view.results, 'open')" />
             </div>
           </template>
 
@@ -886,22 +935,22 @@ function toggleSheet() {
               <AppIcon :name="resultKind === 'ok' ? 'smile' : resultKind === 'mid' ? 'meh' : 'frown'" :size="52" :stroke="1.6" />
               <h2>{{ resultKind === 'ok' ? '答對了！' : resultKind === 'mid' ? '部分正確' : '答錯了' }}</h2>
               <p v-if="slide.type === 'list'">
-                答對 {{ view.myAnswer.hits }} / {{ view.solution?.answers?.length ?? 0 }} 個{{ resultKind === 'ok' ? '，全部命中！' : '' }}
+                答對 {{ view.myAnswer.hits }} / {{ view.solution && 'answers' in view.solution ? view.solution.answers.length : 0 }} 個{{ resultKind === 'ok' ? '，全部命中！' : '' }}
               </p>
               <p v-else-if="resultKind === 'mid' && slide.type === 'number'">
                 你猜 {{ view.myAnswer.value }}{{ slide.unit }}，很接近了
               </p>
-              <p v-else-if="resultKind === 'mid'">答對 {{ Math.round(view.myAnswer.ratio * 100) }}%</p>
+              <p v-else-if="resultKind === 'mid'">答對 {{ Math.round((view.myAnswer.ratio ?? 0) * 100) }}%</p>
               <p v-if="slide.type === 'reveal' && resultKind === 'ok'">
                 你在第 {{ view.myAnswer.stage + 1 }} 階段就猜中了
               </p>
-              <div v-if="view.myAnswer.points > 0" class="gain">+{{ view.myAnswer.points.toLocaleString() }}</div>
+              <div v-if="(view.myAnswer.points ?? 0) > 0" class="gain">+{{ view.myAnswer.points?.toLocaleString() }}</div>
             </div>
 
             <div class="stat-row">
-              <div class="stat"><b>{{ me.score.toLocaleString() }}</b><span>總分</span></div>
-              <div class="stat"><b>{{ me.rank ? '#' + me.rank : '—' }}</b><span>目前排名</span></div>
-              <div class="stat"><b>{{ me.streak }}</b><span>連續答對</span></div>
+              <div class="stat"><b>{{ view.me.score.toLocaleString() }}</b><span>總分</span></div>
+              <div class="stat"><b>{{ view.me.rank ? '#' + view.me.rank : '—' }}</b><span>目前排名</span></div>
+              <div class="stat"><b>{{ view.me.streak }}</b><span>連續答對</span></div>
             </div>
 
             <div v-if="solutionText" class="solution">
@@ -910,7 +959,7 @@ function toggleSheet() {
             </div>
 
             <!-- 複數答案：逐一標出我寫的對不對，再列出完整答案（漏掉的另外標） -->
-            <div v-if="slide.type === 'list' && view.solution" class="list-result">
+            <div v-if="slide.type === 'list' && view.solution && 'answers' in view.solution && view.myAnswer" class="list-result">
               <div v-if="myList.length" class="list-mine">
                 <span v-for="(t, i) in myList" :key="i" class="list-chip" :class="view.myAnswer.marks?.[i] ? 'ok' : 'no'">
                   <AppIcon :name="view.myAnswer.marks?.[i] ? 'check' : 'x'" :size="12" />
@@ -947,7 +996,7 @@ function toggleSheet() {
           <AppIcon :name="view.state === 'ended' ? 'flag' : 'trophy'" :size="52" :stroke="1.5" />
           <h2>{{ view.state === 'ended' ? '活動結束！' : '目前排名' }}</h2>
           <p v-if="view.state === 'ended'">
-            你在 {{ view.playerCount }} 位參與者中排第 {{ me.rank }} 名，總分 {{ me.score.toLocaleString() }} 分
+            你在 {{ view.playerCount }} 位參與者中排第 {{ view.me.rank }} 名，總分 {{ view.me.score.toLocaleString() }} 分
           </p>
 
           <div v-if="view.podium?.length" class="podium">
@@ -955,7 +1004,7 @@ function toggleSheet() {
               v-for="(p, i) in view.podium"
               :key="p.id"
               class="prow"
-              :class="[i < 3 ? 'top' + (i + 1) : '', { mine: p.id === me.id }]"
+              :class="[i < 3 ? 'top' + (i + 1) : '', { mine: p.id === view.me.id }]"
               :style="{ animationDelay: i * 0.07 + 's' }"
             >
               <span class="rank-badge" :class="'r' + p.rank">{{ p.rank }}</span>
@@ -964,11 +1013,11 @@ function toggleSheet() {
             </div>
           </div>
 
-          <div v-if="me.rank > (view.podium?.length || 0)" class="podium" style="margin-top: 8px">
+          <div v-if="view.me.rank > (view.podium?.length || 0)" class="podium" style="margin-top: 8px">
             <div class="prow mine">
-              <span class="rank-badge">{{ me.rank }}</span>
-              <div class="nm">{{ me.name }}（你）</div>
-              <div class="sc">{{ me.score.toLocaleString() }}</div>
+              <span class="rank-badge">{{ view.me.rank }}</span>
+              <div class="nm">{{ view.me.name }}（你）</div>
+              <div class="sc">{{ view.me.score.toLocaleString() }}</div>
             </div>
           </div>
 

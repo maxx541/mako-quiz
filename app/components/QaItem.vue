@@ -1,5 +1,7 @@
 <script setup lang="ts">
-defineProps<{ q: any; upvote?: boolean }>()
+import type { QaView } from '#shared/types/quiz'
+
+defineProps<{ q: QaView; upvote?: boolean }>()
 const emit = defineEmits<{ vote: [string] }>()
 </script>
 

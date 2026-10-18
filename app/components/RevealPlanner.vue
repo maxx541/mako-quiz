@@ -48,7 +48,7 @@ const plan = computed<number[][]>(() => {
   const src = Array.isArray(props.modelValue) ? props.modelValue : []
   const out: number[][] = []
   for (let i = 0; i < props.stages; i++) {
-    out.push((src[i] || []).filter((n: any) => Number.isInteger(n) && n >= 0 && n < total.value))
+    out.push((src[i] || []).filter((n): n is number => Number.isInteger(n) && n >= 0 && n < total.value))
   }
   return out
 })
@@ -57,14 +57,14 @@ const planned = computed(() => plan.value.some((s) => s.length))
 
 /** 這一塊在第幾階段第一次被揭開（-1 = 從頭到尾沒排到） */
 function stageOf(tile: number) {
-  for (let i = 0; i < plan.value.length; i++) if (plan.value[i].includes(tile)) return i
+  for (let i = 0; i < plan.value.length; i++) if (plan.value[i]?.includes(tile)) return i
   return -1
 }
 
 /** 到目前這個階段為止看得到的格子 */
 const visible = computed(() => {
   const s = new Set<number>()
-  for (let i = 0; i <= active.value; i++) for (const t of plan.value[i]) s.add(t)
+  for (let i = 0; i <= active.value; i++) for (const t of plan.value[i] || []) s.add(t)
   return s
 })
 
@@ -75,7 +75,8 @@ function commit(next: number[][]) {
 function toggle(tile: number) {
   // 先從所有階段拿掉，再決定要不要放進目前這一階段 —— 一塊只能屬於一個階段
   const next = plan.value.map((s) => s.filter((t) => t !== tile))
-  if (stageOf(tile) !== active.value) next[active.value].push(tile)
+  const row = next[active.value]
+  if (row && stageOf(tile) !== active.value) row.push(tile)
   commit(next)
 }
 
@@ -83,7 +84,8 @@ function toggle(tile: number) {
 function fillStage() {
   const next = plan.value.map((s) => [...s])
   const taken = new Set(next.flat())
-  for (let i = 0; i < total.value; i++) if (!taken.has(i)) next[active.value].push(i)
+  const row = next[active.value]
+  if (row) for (let i = 0; i < total.value; i++) if (!taken.has(i)) row.push(i)
   commit(next)
 }
 
@@ -123,7 +125,7 @@ const COL_CHOICES = [2, 3, 4, 5, 6, 7, 8, 10, 12]
         @click="active = i - 1"
       >
         第 {{ i }} 階段
-        <b v-if="plan[i - 1]?.length">+{{ plan[i - 1].length }}</b>
+        <b v-if="plan[i - 1]?.length">+{{ plan[i - 1]?.length }}</b>
       </button>
     </div>
 

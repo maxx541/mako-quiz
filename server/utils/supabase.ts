@@ -234,7 +234,7 @@ export class SupabaseGallery implements GalleryDriver {
         Authorization: 'Bearer ' + SUPA_KEY,
         'Content-Type': 'application/zip',
       },
-      body: bundle,
+      body: bundle as BodyInit,
     })
     if (!up.ok) {
       throw new BundleError(explainSupabase(up.status, await up.text().catch(() => '')))
@@ -253,7 +253,7 @@ export class SupabaseGallery implements GalleryDriver {
           Authorization: 'Bearer ' + SUPA_KEY,
           'Content-Type': meta.cover.ext === 'png' ? 'image/png' : meta.cover.ext === 'gif' ? 'image/gif' : meta.cover.ext === 'webp' ? 'image/webp' : 'image/jpeg',
         },
-        body: meta.cover.bytes,
+        body: meta.cover.bytes as BodyInit,
       })
       // 封面傳不上去不該讓整個上架失敗 —— 沒有縮圖只是難看，不是壞掉
       if (!cu.ok) coverPath = null

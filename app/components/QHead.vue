@@ -1,14 +1,17 @@
 <script setup lang="ts">
-const props = defineProps<{ view: any; hint?: string }>()
-const meta = computed(() => TYPE_META[props.view.slide.type] || { label: '', icon: 'info' })
+import type { PlayerView } from '#shared/types/quiz'
+
+const props = defineProps<{ view: PlayerView; hint?: string }>()
+const meta = computed(() => TYPE_META[props.view.slide?.type || ''] || { label: '', icon: 'info' })
 const pointsLabel = computed(() => {
   const s = props.view.slide
+  if (!s) return null
   return s.points === 'double' ? '雙倍分數' : s.points === 'none' ? '不計分' : null
 })
 </script>
 
 <template>
-  <div class="qhead">
+  <div v-if="view.slide" class="qhead">
     <div class="qmeta">
       <span class="tag"><AppIcon :name="meta.icon" :size="12" /> {{ meta.label }}</span>
       <span>第 {{ view.index + 1 }} / {{ view.total }} 題</span>

@@ -20,11 +20,11 @@ export const auth = {
 export async function api<T = any>(path: string, opts: { method?: string; body?: any; silent?: boolean } = {}): Promise<T> {
   const { method = 'GET', body, silent = false } = opts
   try {
-    return await $fetch<T>('/api' + path, {
+    return (await $fetch<T>('/api' + path, {
       method: method as any,
       body,
       headers: auth.token ? { Authorization: 'Bearer ' + auth.token } : undefined,
-    })
+    })) as T
   } catch (err: any) {
     const message = err?.data?.data?.error || err?.data?.error || err?.statusMessage || '操作失敗'
     // 401 代表登入過期，導回登入頁；

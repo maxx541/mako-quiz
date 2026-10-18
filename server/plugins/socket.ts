@@ -4,6 +4,14 @@ import { defineEventHandler } from 'h3'
 import QRCode from 'qrcode'
 import os from 'node:os'
 
+import type {
+  HostActionPayload,
+  HostOpenPayload,
+  HostResumePayload,
+  PlayerAnswerPayload,
+  PlayerJoinPayload,
+  PresentationSettings,
+} from '#shared/types/quiz'
 import { getPresentation, isEmpty } from '../utils/store'
 import { createSession, findSession, startSweeper } from '../utils/session'
 import { seedDemo } from '../utils/seed'
@@ -60,14 +68,14 @@ export default defineNitroPlugin((nitroApp: any) => {
 
     /* ---- 主持端 ---- */
 
-    socket.on('host:open', async ({ presentationId, token, origin }: any = {}, cb: any) => {
+    socket.on('host:open', async ({ presentationId, token, origin }: HostOpenPayload = {}, cb: any) => {
       if (!validToken(token)) return ack(cb, { error: '未授權，請重新登入' })
-      const p = getPresentation(presentationId)
+      const p = getPresentation(String(presentationId || ''))
       if (!p) return ack(cb, { error: '找不到簡報' })
       if (!p.slides.length) return ack(cb, { error: '這份簡報還沒有任何投影片' })
 
       const s = createSession(p, io)
-      s.joinUrl = buildJoinUrl(origin, s.code)
+      s.joinUrl = buildJoinUrl(String(origin || ''), s.code)
       try {
         s.qrDataUrl = await QRCode.toDataURL(s.joinUrl, { margin: 1, width: 360, color: { dark: '#0f172a', light: '#ffffff' } })
       } catch {
@@ -86,9 +94,9 @@ export default defineNitroPlugin((nitroApp: any) => {
      * 已經結束的場次一律不給接 —— 否則主持人回到後台再按一次「播放」，
      * 分頁裡還留著上一場的代碼，就會被接回那個已經結束的房間而不是開新的。
      */
-    socket.on('host:resume', ({ code, token }: any = {}, cb: any) => {
+    socket.on('host:resume', ({ code, token }: HostResumePayload = {}, cb: any) => {
       if (!validToken(token)) return ack(cb, { error: '未授權，請重新登入' })
-      const s = findSession(code)
+      const s = findSession(String(code || ''))
       if (!s) return ack(cb, { error: '場次不存在或已過期' })
       if (s.state === 'ended') return ack(cb, { error: '這場已經結束了' })
       s.hostSockets.add(socket.id)
@@ -98,7 +106,7 @@ export default defineNitroPlugin((nitroApp: any) => {
       ack(cb, { ok: true, code: s.code, qr: s.qrDataUrl, joinUrl: s.joinUrl, view: s.hostView() })
     })
 
-    socket.on('host:action', ({ action, payload }: any = {}, cb: any) => {
+    socket.on('host:action', ({ action, payload }: { action?: string; payload?: HostActionPayload } = {}, cb: any) => {
       const s = mySession()
       if (!s || ctx.role !== 'host') return ack(cb, { error: '未授權' })
       switch (action) {
@@ -114,11 +122,14 @@ export default defineNitroPlugin((nitroApp: any) => {
         case 'leaderboard': s.showLeaderboard(); break
         case 'addTime': s.addTime(Number(payload?.seconds) || 15); break
         case 'end': s.end(); break
-        case 'kick': s.kick(payload?.playerId); break
-        case 'qa:update': s.qaUpdate(payload?.id, payload?.patch || {}); break
-        case 'qa:delete': s.qaDelete(payload?.id); break
+        case 'kick': s.kick(String(payload?.playerId || '')); break
+        case 'qa:update': s.qaUpdate(String(payload?.id || ''), payload?.patch || {}); break
+        case 'qa:delete': s.qaDelete(String(payload?.id || '')); break
         case 'settings':
-          s.presentation.settings = { ...s.presentation.settings, ...(payload || {}) }
+          s.presentation.settings = {
+            ...s.presentation.settings,
+            ...((payload || {}) as Partial<PresentationSettings>),
+          }
           s.syncAll()
           break
         default:
@@ -129,8 +140,8 @@ export default defineNitroPlugin((nitroApp: any) => {
 
     /* ---- 參與端 ---- */
 
-    socket.on('player:join', ({ code, name, token }: any = {}, cb: any) => {
-      const s = findSession(code)
+    socket.on('player:join', ({ code, name, token }: PlayerJoinPayload = {}, cb: any) => {
+      const s = findSession(String(code || ''))
       if (!s) return ack(cb, { error: '找不到這個房間代碼' })
       if (s.state === 'ended') return ack(cb, { error: '這場活動已經結束了' })
 
@@ -141,7 +152,7 @@ export default defineNitroPlugin((nitroApp: any) => {
           return ack(cb, { error: '活動已開始，主持人未開放中途加入' })
         }
         if (s.players.size >= 500) return ack(cb, { error: '房間人數已滿' })
-        player = s.addPlayer(name, socket)
+        player = s.addPlayer(String(name || ''), socket)
       }
       ctx.role = 'player'
       ctx.code = s.code
@@ -149,29 +160,29 @@ export default defineNitroPlugin((nitroApp: any) => {
       ack(cb, { ok: true, token: player.token, resumed, name: player.name, view: s.playerView(player) })
     })
 
-    socket.on('player:answer', ({ slideId, value }: any = {}, cb: any) => {
+    socket.on('player:answer', ({ slideId, value }: PlayerAnswerPayload = {}, cb: any) => {
       const s = mySession()
       if (!s || !ctx.playerId) return ack(cb, { error: '尚未加入房間' })
-      ack(cb, s.submit(ctx.playerId, slideId, value))
+      ack(cb, s.submit(ctx.playerId, String(slideId || ''), value))
     })
 
-    socket.on('player:qa:ask', ({ text }: any = {}, cb: any) => {
+    socket.on('player:qa:ask', ({ text }: { text?: string } = {}, cb: any) => {
       const s = mySession()
       if (!s || !ctx.playerId) return ack(cb, { error: '尚未加入房間' })
-      ack(cb, s.qaAsk(ctx.playerId, text))
+      ack(cb, s.qaAsk(ctx.playerId, String(text || '')))
     })
 
-    socket.on('player:reaction', ({ id }: any = {}, cb: any) => {
+    socket.on('player:reaction', ({ id }: { id?: string } = {}, cb: any) => {
       const s = mySession()
       if (!s || !ctx.playerId) return ack(cb, { error: '尚未加入房間' })
-      ack(cb, s.react(ctx.playerId, id))
+      ack(cb, s.react(ctx.playerId, String(id || '')))
     })
 
-    socket.on('player:qa:vote', ({ id }: any = {}, cb: any) => {
+    socket.on('player:qa:vote', ({ id }: { id?: string } = {}, cb: any) => {
       const s = mySession()
       if (!s || !ctx.playerId) return ack(cb, { error: '尚未加入房間' })
       if (s.settings.qaUpvote === false) return ack(cb, { error: '主持人已關閉按讚' })
-      ack(cb, s.qaVote(ctx.playerId, id))
+      ack(cb, s.qaVote(ctx.playerId, String(id || '')))
     })
 
     socket.on('disconnect', () => {
@@ -199,8 +210,9 @@ export default defineNitroPlugin((nitroApp: any) => {
         open(peer: any) {
           // crossws 已經完成 HTTP 升級，這裡把底層的 socket 交給 engine.io 接手
           const { nodeReq, ws } = peer._internal
-          engine.prepare(nodeReq)
-          engine.onWebSocket(nodeReq, nodeReq.socket, ws)
+          const eng = engine as any
+          eng.prepare(nodeReq)
+          eng.onWebSocket(nodeReq, nodeReq.socket, ws)
         },
       },
     } as any)

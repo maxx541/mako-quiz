@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { Presentation, PresentationSummary } from '#shared/types/quiz'
+import type { AdminItem, GalleryItem } from '../../server/utils/gallery'
 /**
  * 題庫市集。
  *
@@ -8,7 +10,7 @@
  */
 useHead({ title: '題庫市集 · Makoquiz' })
 
-const items = ref<any[]>([])
+const items = ref<GalleryItem[]>([])
 const total = ref(0)
 const source = ref('')
 const remote = ref(false)
@@ -21,7 +23,7 @@ const q = ref('')
 const type = ref('')
 const sort = ref<'new' | 'popular'>('new')
 
-const mine = ref<any[]>([])
+const mine = ref<PresentationSummary[]>([])
 const publishing = ref('')
 const author = ref('')
 const pubDesc = ref('')
@@ -30,7 +32,7 @@ const downloading = ref('')
 
 /** 市集後台：沿用主持人密碼（已經登入就是有權限） */
 const adminOpen = ref(false)
-const adminItems = ref<any[]>([])
+const adminItems = ref<AdminItem[]>([])
 
 onMounted(async () => {
   if (!auth.token) return auth.gotoLogin()
@@ -46,11 +48,11 @@ async function refresh() {
     if (q.value.trim()) p.set('q', q.value.trim())
     if (type.value) p.set('type', type.value)
     p.set('sort', sort.value)
-    const res = await $fetch<any>('/api/gallery?' + p)
+    const res = await $fetch<{ items: GalleryItem[]; total: number; source?: string; remote?: boolean; canAdmin?: boolean }>('/api/gallery?' + p)
     items.value = res.items
     total.value = res.total
-    source.value = res.source
-    remote.value = res.remote
+    source.value = res.source || ''
+    remote.value = !!res.remote
     canAdmin.value = !!res.canAdmin
   } catch (err: any) {
     // 市集連不上不是世界末日，把話講清楚就好
@@ -60,7 +62,7 @@ async function refresh() {
   }
 }
 
-const loadMine = async () => (mine.value = await api<any[]>('/presentations').catch(() => []))
+const loadMine = async () => (mine.value = await api<PresentationSummary[]>('/presentations').catch(() => []))
 
 let searchTimer: any = null
 watch([q, type, sort], () => {
@@ -70,13 +72,13 @@ watch([q, type, sort], () => {
 
 /* ---------------- 發布 ---------------- */
 
-async function publish(p: any) {
+async function publish(p: PresentationSummary) {
   const name = author.value.trim()
   if (!name) return toast('請先填製作者名稱', 'bad')
   if (publishing.value) return
   publishing.value = p.id
   try {
-    const full = await api<any>('/presentations/' + p.id)
+    const full = await api<Presentation>('/presentations/' + p.id)
     // 市集一定要 zip：伺服器靠 presentation.json 自己算題數與題型
     const { blob } = await buildBundle(full, { forceZip: true })
 
@@ -111,7 +113,7 @@ async function publish(p: any) {
  * 下載 → 直接走現有的匯入流程落地成本地簡報 → 進編輯器。
  * 素材會重新上傳成這台機器自己的 /uploads/…，之後就跟市集沒關係了。
  */
-async function download(item: any) {
+async function download(item: GalleryItem) {
   if (downloading.value) return
   downloading.value = item.id
   try {
@@ -122,8 +124,9 @@ async function download(item: any) {
     const { unzipSync, strFromU8 } = await import('fflate')
     const files = unzipSync(buf)
     const key = Object.keys(files).find((k) => k.split('/').pop()?.toLowerCase() === 'presentation.json')
-    if (!key) throw new Error('這份 bundle 壞掉了（沒有 presentation.json）')
-    const data = JSON.parse(strFromU8(files[key]))
+    const json = key ? files[key] : undefined
+    if (!json) throw new Error('這份 bundle 壞掉了（沒有 presentation.json）')
+    const data = JSON.parse(strFromU8(json)) as Presentation
 
     // 先把素材傳成這台機器自己的 /uploads/…，再把 JSON 指過去
     const uploaded = new Map<string, string>()
@@ -145,7 +148,7 @@ async function download(item: any) {
     })
 
     data.title = data.title || item.title
-    const created = await api<any>('/import', { method: 'POST', body: data })
+    const created = await api<Presentation>('/import', { method: 'POST', body: data })
     toast(`「${created.title}」已加入你的簡報`, 'ok')
     navigateTo('/editor?id=' + created.id)
   } catch (err: any) {
@@ -155,7 +158,7 @@ async function download(item: any) {
   }
 }
 
-async function report(item: any) {
+async function report(item: GalleryItem) {
   const reason = await promptDialog({
     title: `檢舉「${item.title}」`,
     message: '累積三次檢舉會自動隱藏，等管理員處理。',
@@ -172,10 +175,10 @@ async function report(item: any) {
 
 async function openAdmin() {
   adminOpen.value = true
-  adminItems.value = (await api<any>('/gallery-admin')).items
+  adminItems.value = (await api<{ items: AdminItem[] }>('/gallery-admin')).items
 }
 
-async function adminDelete(item: any) {
+async function adminDelete(item: AdminItem) {
   const yes = await confirmDialog({
     title: `刪掉「${item.title}」？`,
     message: `${item.author} 發布的，${item.slideCount} 題。刪掉就沒了，救不回來。`,
@@ -188,7 +191,7 @@ async function adminDelete(item: any) {
   await Promise.all([openAdmin(), refresh()])
 }
 
-async function adminToggle(item: any) {
+async function adminToggle(item: AdminItem) {
   const status = item.status === 'published' ? 'hidden' : 'published'
   await api(`/gallery-admin/${item.id}`, { method: 'PATCH', body: { status } })
   await Promise.all([openAdmin(), refresh()])

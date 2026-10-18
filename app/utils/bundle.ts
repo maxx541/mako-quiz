@@ -28,6 +28,8 @@
  * 匯出、匯入、檢查就會同時跟著支援 —— 不要在別處再抄一份。
  */
 
+import type { Presentation } from '#shared/types/quiz'
+
 /** 一個素材欄位：怎麼讀、怎麼寫、預設該叫什麼名字 */
 export type AssetRef = {
   /** 目前的值（`/uploads/…`、`assets/…`、`data:…` 或外部網址） */
@@ -44,21 +46,27 @@ const pad = (n: number) => String(n).padStart(2, '0')
  * 走訪簡報裡所有的素材欄位。
  * 這是「題目 ↔ 素材」綁定的**唯一**定義，匯出與匯入都走這裡。
  */
-export function walkAssets(data: any, visit: (ref: AssetRef) => void) {
+export function walkAssets(data: Presentation, visit: (ref: AssetRef) => void) {
   for (const [i, s] of (data?.slides || []).entries()) {
     const q = `q${pad(i + 1)}`
     if (s?.image) visit({ value: s.image, set: (v) => (s.image = v), label: `${q}-題目` })
-    if (s?.audio) visit({ value: s.audio, set: (v) => (s.audio = v), label: `${q}-音樂` })
+    if ('audio' in s && s.audio) visit({ value: s.audio, set: (v) => (s.audio = v), label: `${q}-音樂` })
     if (s?.explain?.image) visit({ value: s.explain.image, set: (v) => (s.explain.image = v), label: `${q}-解說` })
-    for (const [j, o] of (s?.options || []).entries()) {
-      if (o?.image) visit({ value: o.image, set: (v) => (o.image = v), label: `${q}-選項${j + 1}` })
+    if ('options' in s) {
+      for (const [j, o] of s.options.entries()) {
+        if (o?.image) visit({ value: o.image, set: (v) => (o.image = v), label: `${q}-選項${j + 1}` })
+      }
     }
-    for (const [j, m] of (s?.pairs || []).entries()) {
-      if (m?.leftImage) visit({ value: m.leftImage, set: (v) => (m.leftImage = v), label: `${q}-配對${j + 1}題目` })
-      if (m?.rightImage) visit({ value: m.rightImage, set: (v) => (m.rightImage = v), label: `${q}-配對${j + 1}答案` })
+    if ('pairs' in s) {
+      for (const [j, m] of s.pairs.entries()) {
+        if (m?.leftImage) visit({ value: m.leftImage, set: (v) => (m.leftImage = v), label: `${q}-配對${j + 1}題目` })
+        if (m?.rightImage) visit({ value: m.rightImage, set: (v) => (m.rightImage = v), label: `${q}-配對${j + 1}答案` })
+      }
     }
-    for (const [j, it] of (s?.items || []).entries()) {
-      if (it?.image) visit({ value: it.image, set: (v) => (it.image = v), label: `${q}-項目${j + 1}` })
+    if ('items' in s) {
+      for (const [j, it] of s.items.entries()) {
+        if (it?.image) visit({ value: it.image, set: (v) => (it.image = v), label: `${q}-項目${j + 1}` })
+      }
     }
   }
   for (const [i, r] of (data?.reactions || []).entries()) {
@@ -105,16 +113,16 @@ function extOf(v: string, fallback = 'png') {
     return sub ? sub.replace('jpeg', 'jpg').replace('mpeg', 'mp3').replace('x-wav', 'wav') : fallback
   }
   const m = /\.([a-z0-9]{2,5})(?:$|\?)/i.exec(v)
-  return m ? m[1].toLowerCase() : fallback
+  return m?.[1] ? m[1].toLowerCase() : fallback
 }
 
 /** 打包前先把伺服器來的資料整理成乾淨的可攜格式（去掉這台機器才有意義的欄位） */
-export function portable(full: any) {
-  const data = JSON.parse(JSON.stringify(full))
-  delete data.id
-  delete data.createdAt
-  delete data.updatedAt
-  for (const s of data.slides || []) delete s.id
+export function portable(full: Presentation) {
+  const data = JSON.parse(JSON.stringify(full)) as Presentation
+  delete (data as { id?: string }).id
+  delete (data as { createdAt?: number }).createdAt
+  delete (data as { updatedAt?: number }).updatedAt
+  for (const s of data.slides || []) delete (s as { id?: string }).id
   return data
 }
 
@@ -127,7 +135,7 @@ export function portable(full: any) {
  * @param forceZip 市集一定要 zip（伺服器靠 presentation.json 拆 meta）；
  *                 手動匯出時純文字題庫給 .json 比較好編輯、也好貼給 AI
  */
-export async function buildBundle(full: any, { forceZip = false, readme = '' } = {}) {
+export async function buildBundle(full: Presentation, { forceZip = false, readme = '' } = {}) {
   const data = portable(full)
   const assets = collectAssets(data)
   const files: [string, Uint8Array][] = []
@@ -148,14 +156,16 @@ export async function buildBundle(full: any, { forceZip = false, readme = '' } =
   }
 
   const { zipSync, strToU8 } = await import('fflate')
-  const zip: any = { 'presentation.json': strToU8(JSON.stringify(data, null, 2)) }
+  const zip: Record<string, Uint8Array | [Uint8Array, { level: number }]> = {
+    'presentation.json': strToU8(JSON.stringify(data, null, 2)),
+  }
   if (readme) zip['讀我.txt'] = strToU8(readme)
   // 圖片與音檔本來就是壓縮格式，再壓一次只是浪費時間，用 level 0 直接存
   for (const [name, buf] of files) zip[`assets/${name}`] = [buf, { level: 0 }]
 
   return {
     kind: 'zip' as const,
-    blob: new Blob([zipSync(zip, { level: 6 }) as BlobPart], { type: 'application/zip' }),
+    blob: new Blob([zipSync(zip as import('fflate').Zippable, { level: 6 }) as BlobPart], { type: 'application/zip' }),
     assetCount: files.length,
   }
 }
@@ -164,7 +174,7 @@ export async function buildBundle(full: any, { forceZip = false, readme = '' } =
  * 掃出簡報用到、而且需要打包帶走的素材。
  * @returns [{ url, name }]，name 是它在 assets/ 裡該有的檔名（保證不重複）
  */
-export function collectAssets(data: any) {
+export function collectAssets(data: Presentation) {
   const out: { url: string; name: string; set: (v: string | null) => void }[] = []
   const used = new Set<string>()
   walkAssets(data, ({ value, set, label }) => {

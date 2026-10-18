@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { Presentation, PresentationSummary } from '#shared/types/quiz'
+
 useHead({ title: '管理後台 · Makoquiz' })
 
 const route = useRoute()
@@ -9,7 +11,7 @@ const loggedIn = ref(false)
 const password = ref('')
 const busy = ref(false)
 const loginError = ref('')
-const list = ref<any[]>([])
+const list = ref<PresentationSummary[]>([])
 const fileEl = ref<HTMLInputElement | null>(null)
 const pwEl = ref<HTMLInputElement | null>(null)
 
@@ -61,7 +63,7 @@ function logout() {
 }
 
 async function refresh() {
-  list.value = await api('/presentations')
+  list.value = await api<PresentationSummary[]>('/presentations')
 }
 
 async function create() {
@@ -73,17 +75,17 @@ async function create() {
     okText: '建立',
   })
   if (title === null) return
-  const p = await api<any>('/presentations', { method: 'POST', body: { title } })
+  const p = await api<Presentation>('/presentations', { method: 'POST', body: { title } })
   navigateTo('/editor?id=' + p.id)
 }
 
-async function duplicate(p: any) {
+async function duplicate(p: PresentationSummary) {
   await api(`/presentations/${p.id}/duplicate`, { method: 'POST' })
   toast('已複製', 'ok')
   refresh()
 }
 
-async function remove(p: any) {
+async function remove(p: PresentationSummary) {
   const yes = await confirmDialog({
     title: `刪除「${p.title}」？`,
     message: '這份簡報和它的所有題目都會被刪除，無法復原。',
@@ -102,9 +104,9 @@ async function remove(p: any) {
  * 清單裡只有 slideCount，檢查缺漏要拿完整的簡報，所以先抓一次再掃。
  * 抓不到就不要卡住他 —— 直接讓他去播，總比按了沒反應好。
  */
-async function play(p: any) {
+async function play(p: PresentationSummary) {
   try {
-    const full = await api('/presentations/' + p.id)
+    const full = await api<Presentation>('/presentations/' + p.id)
     if (!(await confirmPlay(full))) return
   } catch {
     /* 檢查失敗不擋播放 */
@@ -126,11 +128,11 @@ function download(blob: Blob, name: string) {
  * 打包邏輯在 ~/utils/bundle.ts 的 buildBundle()，跟「發布到市集」共用同一份 ——
  * 市集收的就是這個 zip，兩邊各寫一份遲早會走鐘。
  */
-async function exportBundle(p: any) {
+async function exportBundle(p: PresentationSummary) {
   if (exporting.value) return
   exporting.value = p.id
   try {
-    const full = await api<any>('/presentations/' + p.id)
+    const full = await api<Presentation>('/presentations/' + p.id)
     const { kind, blob, assetCount } = await buildBundle(full, { readme: BUNDLE_README })
     if (kind === 'json') {
       download(blob, `${p.title}.json`)
@@ -165,7 +167,6 @@ const BUNDLE_README = `這是一份 Makoquiz 簡報包。
 
 // AI 出題指南整份帶進前端，讓使用者一鍵複製、直接貼給 AI，不用自己去翻專案的檔案。
 // ?raw 是 Vite 的功能：把檔案原文當字串載進來（打包時就決定，不需要執行期讀檔）。
-// @ts-expect-error ?raw import 沒有型別
 import aiGuide from '~~/docs/AI-出題指南.md?raw'
 
 const importOpen = ref(false)
@@ -223,16 +224,16 @@ const supplied = ref(new Map<string, { name: string; blob: Blob }>())
 const importCheck = computed(() => {
   const raw = importText.value.trim()
   if (!raw) return null
-  let data: any
+  let data: Presentation
   try {
-    data = JSON.parse(raw)
+    data = JSON.parse(raw) as Presentation
   } catch (err: any) {
     return { ok: false, msg: 'JSON 格式錯誤：' + err.message }
   }
   if (!data || typeof data !== 'object') return { ok: false, msg: '最外層要是一個物件' }
   if (!Array.isArray(data.slides)) return { ok: false, msg: '缺少 slides 陣列' }
   if (!data.slides.length) return { ok: false, msg: 'slides 是空的' }
-  const bad = data.slides.findIndex((s: any) => !s?.type || !TYPE_META[s.type])
+  const bad = data.slides.findIndex((s) => !s?.type || !TYPE_META[s.type])
   if (bad >= 0) return { ok: false, msg: `第 ${bad + 1} 題的 type 不正確（${data.slides[bad]?.type ?? '空的'}）` }
   const counts: Record<string, number> = {}
   for (const s of data.slides) counts[s.type] = (counts[s.type] || 0) + 1
@@ -311,8 +312,8 @@ async function doImport() {
 
 function dataUriToBlob(uri: string) {
   const [head, b64] = uri.split(',')
-  const mime = /^data:([^;,]+)/.exec(head)?.[1] || 'application/octet-stream'
-  const bin = atob(b64)
+  const mime = /^data:([^;,]+)/.exec(head || '')?.[1] || 'application/octet-stream'
+  const bin = atob(b64 || '')
   const buf = new Uint8Array(bin.length)
   for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i)
   return new Blob([buf], { type: mime })

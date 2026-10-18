@@ -34,7 +34,7 @@ export const SIGNATURES: Sig[] = [
     mime: 'audio/mpeg',
     kind: 'audio',
     // 有 ID3 標籤，或直接是 MPEG frame header
-    test: (b) => b.subarray(0, 3).toString('ascii') === 'ID3' || (b[0] === 0xff && (b[1] & 0xe0) === 0xe0),
+    test: (b) => b.subarray(0, 3).toString('ascii') === 'ID3' || (b[0] === 0xff && ((b[1] ?? 0) & 0xe0) === 0xe0),
   },
   { ext: 'ogg', mime: 'audio/ogg', kind: 'audio', test: (b) => b.subarray(0, 4).toString('ascii') === 'OggS' },
   {
